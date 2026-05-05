@@ -66,12 +66,9 @@ pub fn load(path: impl AsRef<Path>) -> Result<ObjMesh, ObjError> {
             None => continue,
         };
         match kw {
-            "o" => {
-                // Python: stop at second `o` once vertices have started.
-                if !vertices.is_empty() {
-                    break;
-                }
-            }
+            // Python: stop at second `o` once vertices have started.
+            "o" if !vertices.is_empty() => break,
+            "o" => {}
             "v" => {
                 let coords: Result<Vec<f64>, _> = parts.map(|x| x.parse::<f64>()).collect();
                 let coords = coords.map_err(|e| ObjError::Malformed {

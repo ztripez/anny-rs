@@ -34,6 +34,10 @@ enum Cmd {
         /// + a one-time `download-smplx` + Python conversion.
         #[arg(long, default_value = "default")]
         topology: String,
+        /// Compute device. `cpu` (default) or `cuda:N` (requires
+        /// `--features cuda`). Example: `--device cuda:0`.
+        #[arg(long, default_value = "cpu")]
+        device: String,
         /// Where to write the posed mesh.
         #[arg(long)]
         out: PathBuf,
@@ -51,9 +55,33 @@ enum Cmd {
         /// Number of regressor iterations (default 5).
         #[arg(long, default_value_t = 5)]
         iters: usize,
+        /// Compute device. `cpu` (default) or `cuda:N`.
+        #[arg(long, default_value = "cpu")]
+        device: String,
     },
     /// Download the non-commercial SMPL-X retopology data into the cache.
     DownloadSmplx,
+}
+
+fn parse_device(s: &str) -> anyhow::Result<Device> {
+    if s == "cpu" {
+        return Ok(Device::Cpu);
+    }
+    if let Some(rest) = s.strip_prefix("cuda:") {
+        let id: usize = rest.parse().context("cuda device index")?;
+        #[cfg(feature = "cuda")]
+        {
+            return Device::new_cuda(id).map_err(|e| anyhow!("cuda init: {e}"));
+        }
+        #[cfg(not(feature = "cuda"))]
+        {
+            let _ = id;
+            return Err(anyhow!(
+                "cuda support not compiled in; rebuild with `--features cuda`"
+            ));
+        }
+    }
+    Err(anyhow!("unknown device '{s}'; expected `cpu` or `cuda:N`"))
 }
 
 fn main() -> anyhow::Result<()> {
@@ -63,14 +91,22 @@ fn main() -> anyhow::Result<()> {
             data_root,
             phenotype,
             topology,
+            device,
             out,
-        } => run_pose(&data_root, phenotype.as_deref(), &topology, &out),
+        } => {
+            let device = parse_device(&device)?;
+            run_pose(&data_root, phenotype.as_deref(), &topology, &device, &out)
+        }
         Cmd::Fit {
             data_root,
             target,
             out,
             iters,
-        } => run_fit(&data_root, &target, &out, iters),
+            device,
+        } => {
+            let device = parse_device(&device)?;
+            run_fit(&data_root, &target, &out, iters, &device)
+        }
         Cmd::DownloadSmplx => run_download_smplx(),
     }
 }
@@ -79,12 +115,14 @@ fn run_pose(
     data_root: &std::path::Path,
     phenotype_path: Option<&std::path::Path>,
     topology: &str,
+    device: &Device,
     out: &std::path::Path,
 ) -> anyhow::Result<()> {
     let mut opts = ModelOptions::new(data_root);
     opts.all_phenotypes = true;
     opts.skinning_method = SkinningMethod::Lbs;
     opts.default_pose_parameterization = PoseParameterization::RestRelative;
+    opts.device = device.clone();
 
     eprintln!("loading model...");
     let model = build_model_for_topology(&opts, topology)?;
@@ -121,10 +159,12 @@ fn run_fit(
     target_path: &std::path::Path,
     out: &std::path::Path,
     iters: usize,
+    device: &Device,
 ) -> anyhow::Result<()> {
     let mut opts = ModelOptions::new(data_root);
     opts.all_phenotypes = true;
     opts.skinning_method = SkinningMethod::Lbs;
+    opts.device = device.clone();
     eprintln!("loading model...");
     let model = Model::build(&opts).map_err(|e| anyhow!("model build: {e}"))?;
     eprintln!(

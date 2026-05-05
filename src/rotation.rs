@@ -232,8 +232,15 @@ pub fn rigid_from_homogeneous(h: &Tensor) -> Result<(Tensor, Tensor)> {
             dims
         );
     }
-    let linear = h.narrow(n - 2, 0, 3)?.narrow(n - 1, 0, 3)?;
-    let translation = h.narrow(n - 2, 0, 3)?.narrow(n - 1, 3, 1)?.squeeze(n - 1)?;
+    // Make both outputs contiguous: candle's CUDA matmul rejects strided
+    // views (CPU matmul tolerates them), and downstream callers feed these
+    // straight into matmul/transpose chains.
+    let linear = h.narrow(n - 2, 0, 3)?.narrow(n - 1, 0, 3)?.contiguous()?;
+    let translation = h
+        .narrow(n - 2, 0, 3)?
+        .narrow(n - 1, 3, 1)?
+        .squeeze(n - 1)?
+        .contiguous()?;
     Ok((linear, translation))
 }
 

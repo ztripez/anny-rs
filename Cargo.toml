@@ -13,6 +13,7 @@ path = "src/bin/anny-cli.rs"
 [features]
 default = []
 smplx-download = ["dep:reqwest"]
+cuda = ["candle-core/cuda"]
 
 [dependencies]
 candle-core = "0.10"

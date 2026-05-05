@@ -374,10 +374,31 @@ impl Model {
     }
 
     /// Computes per-blend-shape coefficients from a [`PhenotypeValues`] using
-    /// the model's mask + anchors. Pads with zeros for the local-change
-    /// blend-shape pairs (callers supplying explicit local changes go through
-    /// a richer API not yet ported).
+    /// the model's mask + anchors. Local-change coefficients are zero
+    /// (no fine-detail morphs applied). Use
+    /// [`Self::phenotype_coefficients_with_local_changes`] to drive them.
     pub fn phenotype_coefficients(&self, values: &PhenotypeValues) -> Result<Tensor> {
+        self.phenotype_coefficients_with_local_changes(values, &std::collections::HashMap::new())
+    }
+
+    /// Computes per-blend-shape coefficients including the local-change
+    /// (fine-detail) morphs. `local_changes` maps a label from
+    /// [`Self::local_change_labels`] to a `[B]` tensor of activation values
+    /// in roughly `[-1, 1]`. Mirrors the `local_changes` kwarg of Python's
+    /// `RiggedModelWithPhenotypeParameters.get_phenotype_blendshape_coefficients`.
+    ///
+    /// For each label `L` with value `v`:
+    /// - the positive-direction blend-shape activates with weight `max(v, 0)`
+    /// - the negative-direction blend-shape activates with weight `max(-v, 0)`
+    ///
+    /// Labels not present in the map default to `0` (no effect). Unknown
+    /// labels (i.e. labels not in `self.local_change_labels`) are silently
+    /// ignored, mirroring Python's `try / except KeyError` behaviour.
+    pub fn phenotype_coefficients_with_local_changes(
+        &self,
+        values: &PhenotypeValues,
+        local_changes: &std::collections::HashMap<String, Tensor>,
+    ) -> Result<Tensor> {
         let macro_coeffs = phenotype::blendshape_coefficients(
             values,
             &self.anchors,
@@ -389,8 +410,39 @@ impl Model {
             return Ok(macro_coeffs);
         }
         let bs = macro_coeffs.dim(0)?;
-        let pad = Tensor::zeros((bs, 2 * n_local_pairs), self.dtype, &self.device)?;
-        Tensor::cat(&[&macro_coeffs, &pad], 1)
+        // Build a [B, 2 * n_local_pairs] activation tensor on the host.
+        // For each label slot i: column 2i = max(v, 0); column 2i+1 = max(-v, 0).
+        let mut local_data = vec![0.0_f64; bs * 2 * n_local_pairs];
+        for (i, label) in self.local_change_labels.iter().enumerate() {
+            let Some(value) = local_changes.get(label) else {
+                continue;
+            };
+            let value = value.to_dtype(DType::F64)?.to_device(&Device::Cpu)?;
+            let value_h: Vec<f64> = value.flatten_all()?.to_vec1()?;
+            if value_h.len() == 1 {
+                let v = value_h[0];
+                let pos = v.max(0.0);
+                let neg = (-v).max(0.0);
+                for bi in 0..bs {
+                    local_data[bi * (2 * n_local_pairs) + 2 * i] = pos;
+                    local_data[bi * (2 * n_local_pairs) + 2 * i + 1] = neg;
+                }
+            } else if value_h.len() == bs {
+                for bi in 0..bs {
+                    let v = value_h[bi];
+                    local_data[bi * (2 * n_local_pairs) + 2 * i] = v.max(0.0);
+                    local_data[bi * (2 * n_local_pairs) + 2 * i + 1] = (-v).max(0.0);
+                }
+            } else {
+                candle_core::bail!(
+                    "local_changes['{label}'] has length {}, expected 1 or {bs}",
+                    value_h.len()
+                );
+            }
+        }
+        let local_t = Tensor::from_vec(local_data, (bs, 2 * n_local_pairs), &self.device)?
+            .to_dtype(self.dtype)?;
+        Tensor::cat(&[&macro_coeffs, &local_t], 1)
     }
 
     /// Run the model. `pose_parameters` is `[B, K, 4, 4]` of delta transforms
@@ -402,7 +454,26 @@ impl Model {
         phenotype: &PhenotypeValues,
         parameterization: Option<PoseParameterization>,
     ) -> Result<ForwardOutput> {
-        let coeffs = self.phenotype_coefficients(phenotype)?;
+        self.forward_with_local_changes(
+            pose_parameters,
+            phenotype,
+            &std::collections::HashMap::new(),
+            parameterization,
+        )
+    }
+
+    /// Same as [`Self::forward`] but additionally drives the named
+    /// local-change blend-shapes. See
+    /// [`Self::phenotype_coefficients_with_local_changes`] for the
+    /// `local_changes` map semantics.
+    pub fn forward_with_local_changes(
+        &self,
+        pose_parameters: Option<&Tensor>,
+        phenotype: &PhenotypeValues,
+        local_changes: &std::collections::HashMap<String, Tensor>,
+        parameterization: Option<PoseParameterization>,
+    ) -> Result<ForwardOutput> {
+        let coeffs = self.phenotype_coefficients_with_local_changes(phenotype, local_changes)?;
         let bs = coeffs.dim(0)?;
         let n_bones = self.bone_count();
 

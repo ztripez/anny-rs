@@ -150,6 +150,99 @@ pub fn point_to_mesh_distance_and_face_uvs(
     (distances, face_ids, bary)
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// Smooth per-vertex normals.
+// ────────────────────────────────────────────────────────────────────────────
+
+/// Per-vertex angle-weighted smooth normals. Each face contributes its
+/// face normal to every adjacent vertex weighted by the *interior angle*
+/// at that vertex (Max 1999 — empirically the most stable weighting on
+/// non-uniform meshes). Result is unit-length.
+///
+/// Faces may mix triangles and quads — both are handled. The face normal
+/// is computed from the triangle `(face[0], face[1], face[2])`, which is
+/// fine for the near-planar quads in MakeHuman / SMPL-X meshes; very
+/// non-planar quads should be triangulated first via [`triangulate_faces`].
+///
+/// Winding determines the sign: faces with right-hand-rule winding give
+/// outward-pointing normals. The 14 cap quads added by
+/// [`crate::models::full_model::get_edited_mesh_faces`] use the same
+/// winding convention as the surrounding body mesh.
+///
+/// Vertices not referenced by any face yield a zero vector.
+pub fn smooth_vertex_normals(vertices: &[[f64; 3]], faces: &[Vec<u32>]) -> Vec<[f64; 3]> {
+    let n = vertices.len();
+    let mut acc = vec![[0.0_f64; 3]; n];
+
+    for face in faces {
+        let m = face.len();
+        if m < 3 {
+            continue;
+        }
+        // Face normal from the triangle (v0, v1, v2). Scale-invariant:
+        // we only use the direction. (We weight by per-vertex angle, not
+        // by face area, so the magnitude here doesn't matter.)
+        let v0 = vertices[face[0] as usize];
+        let v1 = vertices[face[1] as usize];
+        let v2 = vertices[face[2] as usize];
+        let face_n_unscaled = cross(&sub3(&v1, &v0), &sub3(&v2, &v0));
+        let face_n_len2 = dot3(&face_n_unscaled, &face_n_unscaled);
+        if face_n_len2 < 1e-30 {
+            continue; // degenerate
+        }
+        let inv_face_n_len = 1.0 / face_n_len2.sqrt();
+        let face_n = [
+            face_n_unscaled[0] * inv_face_n_len,
+            face_n_unscaled[1] * inv_face_n_len,
+            face_n_unscaled[2] * inv_face_n_len,
+        ];
+
+        for i in 0..m {
+            let prev = vertices[face[(i + m - 1) % m] as usize];
+            let cur = vertices[face[i] as usize];
+            let next = vertices[face[(i + 1) % m] as usize];
+            let e_prev = sub3(&prev, &cur);
+            let e_next = sub3(&next, &cur);
+            let cos_angle = dot3(&e_prev, &e_next) / (norm3(&e_prev) * norm3(&e_next)).max(1e-30);
+            let angle = cos_angle.clamp(-1.0, 1.0).acos();
+            let v_idx = face[i] as usize;
+            acc[v_idx][0] += angle * face_n[0];
+            acc[v_idx][1] += angle * face_n[1];
+            acc[v_idx][2] += angle * face_n[2];
+        }
+    }
+
+    for nrm in acc.iter_mut() {
+        let len = (nrm[0] * nrm[0] + nrm[1] * nrm[1] + nrm[2] * nrm[2]).sqrt();
+        if len > 1e-30 {
+            nrm[0] /= len;
+            nrm[1] /= len;
+            nrm[2] /= len;
+        }
+    }
+    acc
+}
+
+fn sub3(a: &[f64; 3], b: &[f64; 3]) -> [f64; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+fn dot3(a: &[f64; 3], b: &[f64; 3]) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+fn norm3(a: &[f64; 3]) -> f64 {
+    dot3(a, a).sqrt()
+}
+
+fn cross(a: &[f64; 3], b: &[f64; 3]) -> [f64; 3] {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -174,6 +267,51 @@ mod tests {
         let faces = vec![vec![0u32, 1, 2, 3]];
         let tri = triangulate_faces(&verts, &faces);
         assert_eq!(tri, vec![[0, 1, 2], [2, 3, 0]]);
+    }
+
+    #[test]
+    fn smooth_normals_unit_cube_corner() {
+        // Single triangle in the XY plane → normal +Z at every vertex.
+        let verts = vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+        let faces = vec![vec![0u32, 1, 2]];
+        let normals = smooth_vertex_normals(&verts, &faces);
+        for n in &normals {
+            assert!((n[0]).abs() < 1e-12);
+            assert!((n[1]).abs() < 1e-12);
+            assert!((n[2] - 1.0).abs() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn smooth_normals_two_faces_average() {
+        // Two coplanar triangles sharing an edge (0—1). Their normals
+        // both point +Z, so vertex 0 and 1 (on the seam) should have
+        // normal (0, 0, 1) too.
+        let verts = vec![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, -1.0, 0.0],
+        ];
+        let faces = vec![vec![0u32, 1, 2], vec![1, 0, 3]];
+        let normals = smooth_vertex_normals(&verts, &faces);
+        for (i, n) in normals.iter().enumerate() {
+            assert!((n[2] - 1.0).abs() < 1e-12, "vertex {i} normal {n:?}");
+        }
+    }
+
+    #[test]
+    fn smooth_normals_isolated_vertex_is_zero() {
+        let verts = vec![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [5.0, 5.0, 5.0],
+        ];
+        let faces = vec![vec![0u32, 1, 2]];
+        let normals = smooth_vertex_normals(&verts, &faces);
+        // Vertex 3 is unreferenced.
+        assert_eq!(normals[3], [0.0, 0.0, 0.0]);
     }
 
     #[test]

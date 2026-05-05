@@ -35,7 +35,9 @@ pub enum RetopologyError {
     Obj(#[from] obj::ObjError),
     #[error("candle: {0}")]
     Candle(#[from] candle_core::Error),
-    #[error("missing converted SMPL-X data at {0}; run `tests/fixtures/convert_smplx.py` after `download-smplx`")]
+    #[error(
+        "missing converted SMPL-X data at {0}; run `tests/fixtures/convert_smplx.py` after `download-smplx`"
+    )]
     MissingConverted(std::path::PathBuf),
     #[error(
         "alternative topology mesh has vertices too far from the reference (max {0} m); the topology .obj is misaligned"
@@ -98,9 +100,7 @@ fn load_and_remap(
         .to_vec1()?;
     let indices_h: Vec<u32> = store
         .get("vertex_indices")
-        .ok_or_else(|| {
-            candle_core::Error::Msg("safetensors missing 'vertex_indices'".to_string())
-        })?
+        .ok_or_else(|| candle_core::Error::Msg("safetensors missing 'vertex_indices'".to_string()))?
         .to_dtype(DType::U32)?
         .flatten_all()?
         .to_vec1()?;
@@ -115,7 +115,11 @@ fn load_and_remap(
     let n_faces = dst_faces_h.len() / 3;
     let mut faces_out: Vec<[u32; 3]> = Vec::with_capacity(n_faces);
     for i in 0..n_faces {
-        faces_out.push([dst_faces_h[i * 3], dst_faces_h[i * 3 + 1], dst_faces_h[i * 3 + 2]]);
+        faces_out.push([
+            dst_faces_h[i * 3],
+            dst_faces_h[i * 3 + 1],
+            dst_faces_h[i * 3 + 2],
+        ]);
     }
 
     interpolate_topology(reference, &bary_h, &indices_h, v_target, &faces_out)
@@ -407,4 +411,3 @@ fn build_retopologised(
         device: reference.device,
     }
 }
-

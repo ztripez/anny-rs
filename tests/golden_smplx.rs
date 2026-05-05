@@ -101,7 +101,12 @@ fn smplx_template_vertices_match_python() {
     let model = build_model();
     let (golden, dims) = read_golden("smplx_template_vertices");
     assert_eq!(dims, vec![model.vertex_count(), 3]);
-    let got: Vec<f64> = model.template_vertices.flatten_all().unwrap().to_vec1().unwrap();
+    let got: Vec<f64> = model
+        .template_vertices
+        .flatten_all()
+        .unwrap()
+        .to_vec1()
+        .unwrap();
     let max = max_abs(&got, &golden);
     eprintln!("smplx template_vertices: max abs = {max:.3e}");
     // The barycentric data ships at f32 precision (per the .pth dtype). After

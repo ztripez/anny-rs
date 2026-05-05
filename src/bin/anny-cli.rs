@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use clap::{Parser, Subcommand};
 
 use anny_rs::data::obj as obj_io;
@@ -147,8 +147,12 @@ fn run_fit(
         .iter()
         .flat_map(|v| v.iter().copied())
         .collect();
-    let target = Tensor::from_vec(target_flat, (1, target_mesh.vertices.len(), 3), &model.device)?
-        .to_dtype(model.dtype)?;
+    let target = Tensor::from_vec(
+        target_flat,
+        (1, target_mesh.vertices.len(), 3),
+        &model.device,
+    )?
+    .to_dtype(model.dtype)?;
 
     let reg_opts = RegressorOptions {
         max_n_iters: iters,
@@ -157,7 +161,10 @@ fn run_fit(
     };
     let reg = Regressor::new(&model, reg_opts).map_err(|e| anyhow!("regressor: {e}"))?;
     let result = reg
-        .fit(&target, &["cupsize", "firmness", "african", "asian", "caucasian"])
+        .fit(
+            &target,
+            &["cupsize", "firmness", "african", "asian", "caucasian"],
+        )
         .map_err(|e| anyhow!("fit: {e}"))?;
     write_obj(out, &result.vertices, &model.faces)?;
     eprintln!("wrote {}", out.display());
@@ -169,7 +176,10 @@ fn run_download_smplx() -> anyhow::Result<()> {
     {
         anny_rs::paths::download::fetch_noncommercial()
             .map_err(|e| anyhow!("smplx download: {e}"))?;
-        eprintln!("downloaded to {}", anny_rs::paths::anny2smplx_path().display());
+        eprintln!(
+            "downloaded to {}",
+            anny_rs::paths::anny2smplx_path().display()
+        );
         Ok(())
     }
     #[cfg(not(feature = "smplx-download"))]
@@ -211,17 +221,10 @@ fn read_phenotype(
     Ok(phen)
 }
 
-fn write_obj(
-    path: &std::path::Path,
-    vertices: &Tensor,
-    faces: &[Vec<u32>],
-) -> anyhow::Result<()> {
+fn write_obj(path: &std::path::Path, vertices: &Tensor, faces: &[Vec<u32>]) -> anyhow::Result<()> {
     let dims = vertices.dims();
     let n_verts = if dims.len() == 3 { dims[1] } else { dims[0] };
-    let flat: Vec<f64> = vertices
-        .to_dtype(DType::F64)?
-        .flatten_all()?
-        .to_vec1()?;
+    let flat: Vec<f64> = vertices.to_dtype(DType::F64)?.flatten_all()?.to_vec1()?;
     let mut verts: Vec<[f64; 3]> = Vec::with_capacity(n_verts);
     for i in 0..n_verts {
         verts.push([flat[i * 3], flat[i * 3 + 1], flat[i * 3 + 2]]);

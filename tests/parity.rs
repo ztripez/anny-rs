@@ -29,7 +29,9 @@ struct Rng {
     state: u64,
 }
 impl Rng {
-    fn new(seed: u64) -> Self { Self { state: seed } }
+    fn new(seed: u64) -> Self {
+        Self { state: seed }
+    }
     fn next_u64(&mut self) -> u64 {
         self.state = self.state.wrapping_add(0x9E3779B97F4A7C15);
         let mut z = self.state;
@@ -66,10 +68,14 @@ fn random_translations(rng: &mut Rng, shape: &[usize]) -> Vec<f64> {
 fn random_rigid_batch(rng: &mut Rng, bs: usize, k: usize, dtype: DType, device: &Device) -> Tensor {
     let rotvecs = random_rotvecs(rng, &[bs * k, 3]);
     let translations = random_translations(rng, &[bs * k, 3]);
-    let rotvec_t = Tensor::from_vec(rotvecs, (bs * k, 3), device).unwrap()
-        .to_dtype(dtype).unwrap();
-    let translation_t = Tensor::from_vec(translations, (bs * k, 3), device).unwrap()
-        .to_dtype(dtype).unwrap();
+    let rotvec_t = Tensor::from_vec(rotvecs, (bs * k, 3), device)
+        .unwrap()
+        .to_dtype(dtype)
+        .unwrap();
+    let translation_t = Tensor::from_vec(translations, (bs * k, 3), device)
+        .unwrap()
+        .to_dtype(dtype)
+        .unwrap();
     let r = rotvec_to_rotmat(&rotvec_t).unwrap(); // [B*K, 3, 3]
     let h = rigid_to_homogeneous(&r, &translation_t).unwrap(); // [B*K, 4, 4]
     h.reshape((bs, k, 4, 4)).unwrap().contiguous().unwrap()
@@ -96,12 +102,25 @@ fn parity_sequential_vs_parallel_fk_synthetic() {
 
     let p_par: Vec<f64> = parallel.poses.flatten_all().unwrap().to_vec1().unwrap();
     let p_seq: Vec<f64> = sequential.poses.flatten_all().unwrap().to_vec1().unwrap();
-    let t_par: Vec<f64> = parallel.transforms.flatten_all().unwrap().to_vec1().unwrap();
-    let t_seq: Vec<f64> = sequential.transforms.flatten_all().unwrap().to_vec1().unwrap();
+    let t_par: Vec<f64> = parallel
+        .transforms
+        .flatten_all()
+        .unwrap()
+        .to_vec1()
+        .unwrap();
+    let t_seq: Vec<f64> = sequential
+        .transforms
+        .flatten_all()
+        .unwrap()
+        .to_vec1()
+        .unwrap();
     let max_pose = max_diff(&p_par, &p_seq);
     let max_transform = max_diff(&t_par, &t_seq);
     assert!(max_pose < 1e-12, "poses diverge: max abs err = {max_pose}");
-    assert!(max_transform < 1e-12, "transforms diverge: max abs err = {max_transform}");
+    assert!(
+        max_transform < 1e-12,
+        "transforms diverge: max abs err = {max_transform}"
+    );
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -123,11 +142,25 @@ fn parity_pose_parameterization_roundtrip() {
 
     // Random phenotype.
     let mut phen = PhenotypeValues::defaults(dtype, &device).unwrap();
-    let labels = ["age", "gender", "muscle", "weight", "height", "proportions",
-                  "cupsize", "firmness", "african", "asian", "caucasian"];
+    let labels = [
+        "age",
+        "gender",
+        "muscle",
+        "weight",
+        "height",
+        "proportions",
+        "cupsize",
+        "firmness",
+        "african",
+        "asian",
+        "caucasian",
+    ];
     for label in &labels {
         let v: Vec<f64> = (0..bs).map(|_| 0.3 + 0.4 * rng.next_f64()).collect();
-        let t = Tensor::from_vec(v, bs, &device).unwrap().to_dtype(dtype).unwrap();
+        let t = Tensor::from_vec(v, bs, &device)
+            .unwrap()
+            .to_dtype(dtype)
+            .unwrap();
         match *label {
             "age" => phen.age = t,
             "gender" => phen.gender = t,
@@ -154,8 +187,15 @@ fn parity_pose_parameterization_roundtrip() {
 
     let mut failures = Vec::new();
     for &source_mode in &modes {
-        let source_out = model.forward(Some(&source_pose), &phen, Some(source_mode)).unwrap();
-        let source_v: Vec<f64> = source_out.vertices.flatten_all().unwrap().to_vec1().unwrap();
+        let source_out = model
+            .forward(Some(&source_pose), &phen, Some(source_mode))
+            .unwrap();
+        let source_v: Vec<f64> = source_out
+            .vertices
+            .flatten_all()
+            .unwrap()
+            .to_vec1()
+            .unwrap();
 
         for &target_mode in &modes {
             let target_pose = model
@@ -164,7 +204,12 @@ fn parity_pose_parameterization_roundtrip() {
             let target_out = model
                 .forward(Some(&target_pose), &phen, Some(target_mode))
                 .unwrap();
-            let target_v: Vec<f64> = target_out.vertices.flatten_all().unwrap().to_vec1().unwrap();
+            let target_v: Vec<f64> = target_out
+                .vertices
+                .flatten_all()
+                .unwrap()
+                .to_vec1()
+                .unwrap();
             let max = max_diff(&source_v, &target_v);
             let label = format!("{:?} -> {:?}", source_mode, target_mode);
             eprintln!("  [{label}] max abs err = {max:.3e}");
@@ -196,7 +241,10 @@ fn parity_batch_consistency() {
     // Per-batch phenotype: [B] random in [0.3, 0.7].
     let make_field = |rng: &mut Rng| -> Tensor {
         let v: Vec<f64> = (0..bs).map(|_| 0.3 + 0.4 * rng.next_f64()).collect();
-        Tensor::from_vec(v, bs, &device).unwrap().to_dtype(dtype).unwrap()
+        Tensor::from_vec(v, bs, &device)
+            .unwrap()
+            .to_dtype(dtype)
+            .unwrap()
     };
     let phen_batched = PhenotypeValues {
         age: make_field(&mut rng),
@@ -214,7 +262,11 @@ fn parity_batch_consistency() {
     let pose_batched = random_rigid_batch(&mut rng, bs, n_bones, dtype, &device);
 
     let batched = model
-        .forward(Some(&pose_batched), &phen_batched, Some(PoseParameterization::RestRelative))
+        .forward(
+            Some(&pose_batched),
+            &phen_batched,
+            Some(PoseParameterization::RestRelative),
+        )
         .unwrap();
     let batched_v: Vec<f64> = batched.vertices.flatten_all().unwrap().to_vec1().unwrap();
     let v_per_sample = model.vertex_count() * 3;
@@ -236,7 +288,11 @@ fn parity_batch_consistency() {
         };
         let single_pose = pose_batched.narrow(0, i, 1).unwrap().contiguous().unwrap();
         let single = model
-            .forward(Some(&single_pose), &single_phen, Some(PoseParameterization::RestRelative))
+            .forward(
+                Some(&single_pose),
+                &single_phen,
+                Some(PoseParameterization::RestRelative),
+            )
             .unwrap();
         let single_v: Vec<f64> = single.vertices.flatten_all().unwrap().to_vec1().unwrap();
         assert_eq!(single_v.len(), v_per_sample);
@@ -282,7 +338,10 @@ fn parity_degenerate_tongue02_continuity() {
     let make_phen = |values: &[(&str, f64)]| -> PhenotypeValues {
         let mut p = PhenotypeValues::defaults(dtype, &device).unwrap();
         for (label, v) in values {
-            let t = Tensor::from_vec(vec![*v], 1, &device).unwrap().to_dtype(dtype).unwrap();
+            let t = Tensor::from_vec(vec![*v], 1, &device)
+                .unwrap()
+                .to_dtype(dtype)
+                .unwrap();
             match *label {
                 "age" => p.age = t,
                 "gender" => p.gender = t,
@@ -376,7 +435,10 @@ fn parity_local_changes_zero_default() {
     let bs = 4;
     let make_field = |rng: &mut Rng| -> Tensor {
         let v: Vec<f64> = (0..bs).map(|_| 0.3 + 0.4 * rng.next_f64()).collect();
-        Tensor::from_vec(v, bs, &device).unwrap().to_dtype(dtype).unwrap()
+        Tensor::from_vec(v, bs, &device)
+            .unwrap()
+            .to_dtype(dtype)
+            .unwrap()
     };
     let phen = PhenotypeValues {
         age: make_field(&mut rng),
@@ -395,7 +457,10 @@ fn parity_local_changes_zero_default() {
     // Get phenotype coefficients at full size (incl. zero-padded local change pairs).
     let coeffs_full = model.phenotype_coefficients(&phen).unwrap();
     let n_macro = model.stacked_phenotype_blend_shapes_mask.dim(0).unwrap();
-    assert!(!model.local_change_labels.is_empty(), "expected local changes loaded");
+    assert!(
+        !model.local_change_labels.is_empty(),
+        "expected local changes loaded"
+    );
 
     // The trailing 2*n_local columns must all be zero.
     let coeffs_v: Vec<f64> = coeffs_full.flatten_all().unwrap().to_vec1().unwrap();
@@ -406,7 +471,10 @@ fn parity_local_changes_zero_default() {
             max_local = max_local.max(coeffs_v[b * cols + c].abs());
         }
     }
-    assert_eq!(max_local, 0.0, "local-change coeffs must be zero by default");
+    assert_eq!(
+        max_local, 0.0,
+        "local-change coeffs must be zero by default"
+    );
 
     // Forward should also work and produce finite output.
     let out = model

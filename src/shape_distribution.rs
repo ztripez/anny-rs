@@ -92,8 +92,7 @@ impl MorphologicalAgeMapping {
 
     /// Inverse direction: Anny-scale age → morphological years.
     pub fn anny_to_morphological_age(&self, anny_age: &Tensor) -> Result<Tensor> {
-        let coeffs =
-            linear_interpolation_coefficients(anny_age, &self.anny_age_anchors, true)?;
+        let coeffs = linear_interpolation_coefficients(anny_age, &self.anny_age_anchors, true)?;
         let ma_col = self.morphological_age_anchors.unsqueeze(1)?;
         let result = coeffs.matmul(&ma_col)?.squeeze(1)?;
         Ok(result)
@@ -141,9 +140,7 @@ impl ConditionalBetaDistribution {
         let alpha = coefs
             .matmul(&self.alpha_anchors.unsqueeze(1)?)?
             .squeeze(1)?;
-        let beta = coefs
-            .matmul(&self.beta_anchors.unsqueeze(1)?)?
-            .squeeze(1)?;
+        let beta = coefs.matmul(&self.beta_anchors.unsqueeze(1)?)?.squeeze(1)?;
         Ok((alpha, beta))
     }
 }
@@ -162,8 +159,15 @@ pub struct GenderBetaSet {
 }
 
 impl GenderBetaSet {
-    fn load(path: &Path, dtype: DType, device: &Device) -> std::result::Result<Self, ShapeDistributionError> {
-        let load_sub = |key: &str| -> std::result::Result<ConditionalBetaDistribution, ShapeDistributionError> {
+    fn load(
+        path: &Path,
+        dtype: DType,
+        device: &Device,
+    ) -> std::result::Result<Self, ShapeDistributionError> {
+        let load_sub = |key: &str| -> std::result::Result<
+            ConditionalBetaDistribution,
+            ShapeDistributionError,
+        > {
             let sd = pickle::load_all(path, Some(key), device)?;
             ConditionalBetaDistribution::from_state_dict(&sd, dtype, device)
         };
@@ -231,8 +235,8 @@ impl SimpleShapeDistribution {
         // Morphological age ∈ Uniform(0, 90).
         let uniform_age = Uniform::new(0.0_f64, 90.0);
         let morph: Vec<f64> = (0..batch_size).map(|_| uniform_age.sample(rng)).collect();
-        let morph_t = Tensor::from_vec(morph.clone(), batch_size, &self.device)?
-            .to_dtype(self.dtype)?;
+        let morph_t =
+            Tensor::from_vec(morph.clone(), batch_size, &self.device)?.to_dtype(self.dtype)?;
         let anny_age = self.mapping.morphological_to_anny_age(&morph_t)?;
 
         // Gender ∈ Uniform(0, 1).
@@ -242,30 +246,11 @@ impl SimpleShapeDistribution {
             Tensor::from_vec(gender_h.clone(), batch_size, &self.device)?.to_dtype(self.dtype)?;
 
         // Beta-distributed phenotype scalars, switching by gender.
-        let height = self.sample_per_gender_beta(
-            &anny_age,
-            &gender_h,
-            |g| &g.height,
-            rng,
-        )?;
-        let weight = self.sample_per_gender_beta(
-            &anny_age,
-            &gender_h,
-            |g| &g.weight,
-            rng,
-        )?;
-        let muscle = self.sample_per_gender_beta(
-            &anny_age,
-            &gender_h,
-            |g| &g.muscle,
-            rng,
-        )?;
-        let proportions = self.sample_per_gender_beta(
-            &anny_age,
-            &gender_h,
-            |g| &g.proportions,
-            rng,
-        )?;
+        let height = self.sample_per_gender_beta(&anny_age, &gender_h, |g| &g.height, rng)?;
+        let weight = self.sample_per_gender_beta(&anny_age, &gender_h, |g| &g.weight, rng)?;
+        let muscle = self.sample_per_gender_beta(&anny_age, &gender_h, |g| &g.muscle, rng)?;
+        let proportions =
+            self.sample_per_gender_beta(&anny_age, &gender_h, |g| &g.proportions, rng)?;
 
         // Other phenotype labels: uniform [0, 1].
         let mut phen = PhenotypeValues::defaults(self.dtype, &self.device)?;
@@ -377,11 +362,7 @@ mod tests {
         )
         .expect("load");
         // From the Python inspection: anny_age_anchors = [0.0, 0.05, 0.215, 0.415, 0.67, 0.77, 0.83, 1.0]
-        let anny_anchors: Vec<f64> = dist
-            .mapping
-            .anny_age_anchors
-            .to_vec1()
-            .unwrap();
+        let anny_anchors: Vec<f64> = dist.mapping.anny_age_anchors.to_vec1().unwrap();
         let expected = [0.0, 0.05, 0.215, 0.415, 0.67, 0.77, 0.83, 1.0];
         assert_eq!(anny_anchors.len(), expected.len());
         for (g, e) in anny_anchors.iter().zip(expected.iter()) {
@@ -463,10 +444,7 @@ mod tests {
             };
             let v: Vec<f64> = t.to_vec1().unwrap();
             for x in &v {
-                assert!(
-                    (0.0..=1.0).contains(x),
-                    "{label} sample {x} outside [0, 1]"
-                );
+                assert!((0.0..=1.0).contains(x), "{label} sample {x} outside [0, 1]");
             }
         }
     }

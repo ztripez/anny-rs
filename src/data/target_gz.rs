@@ -24,10 +24,7 @@ pub enum TargetGzError {
 /// Loads a `.target.gz` file into a dense `[vertices_count, 3]` row-major buffer
 /// of `f64` deltas. Vertices not mentioned in the file are zero. The caller is
 /// expected to apply the world transformation (decimeter → meter scaling, etc.).
-pub fn load(
-    path: impl AsRef<Path>,
-    vertices_count: usize,
-) -> Result<Vec<f64>, TargetGzError> {
+pub fn load(path: impl AsRef<Path>, vertices_count: usize) -> Result<Vec<f64>, TargetGzError> {
     let file = File::open(path.as_ref())?;
     let decoder = GzDecoder::new(file);
     let reader = BufReader::new(decoder);

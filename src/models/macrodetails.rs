@@ -20,7 +20,7 @@ use serde::Deserialize;
 use thiserror::Error;
 
 use crate::data::target_gz;
-use crate::phenotype::{PHENOTYPE_VARIATIONS, PHENOTYPE_VARIATION_COUNT};
+use crate::phenotype::{PHENOTYPE_VARIATION_COUNT, PHENOTYPE_VARIATIONS};
 
 #[derive(Debug, Error)]
 pub enum MacrodetailsError {
@@ -163,7 +163,11 @@ pub fn load_all(
                             apply_newborn_scaling(&mut bs, template_vertices_world);
                         }
                         let mut mask = [0.0_f64; PHENOTYPE_VARIATION_COUNT];
-                        set_mask(&mut mask, &label_idx, &[gender, age, muscle, weight, height]);
+                        set_mask(
+                            &mut mask,
+                            &label_idx,
+                            &[gender, age, muscle, weight, height],
+                        );
                         blend_buf.push(bs);
                         masks.push(mask);
                     }
@@ -236,31 +240,22 @@ pub fn load_all(
     let n_macrodetails = blend_buf.len();
 
     // ── local changes ────────────────────────────────────────────────────
-    let local_change_labels = load_local_changes(
-        data_root,
-        v,
-        world_transform,
-        &mut blend_buf,
-    )?;
+    let local_change_labels = load_local_changes(data_root, v, world_transform, &mut blend_buf)?;
 
     // Stack into final tensors.
     let mut blend_flat: Vec<f64> = Vec::with_capacity(blend_buf.len() * v * 3);
     for bs in &blend_buf {
         blend_flat.extend_from_slice(bs);
     }
-    let blendshapes = Tensor::from_vec(blend_flat, (blend_buf.len(), v, 3), device)?
-        .to_dtype(dtype)?;
+    let blendshapes =
+        Tensor::from_vec(blend_flat, (blend_buf.len(), v, 3), device)?.to_dtype(dtype)?;
 
     let mut mask_flat: Vec<f64> = Vec::with_capacity(masks.len() * PHENOTYPE_VARIATION_COUNT);
     for row in &masks {
         mask_flat.extend_from_slice(row);
     }
-    let mask = Tensor::from_vec(
-        mask_flat,
-        (masks.len(), PHENOTYPE_VARIATION_COUNT),
-        device,
-    )?
-    .to_dtype(dtype)?;
+    let mask = Tensor::from_vec(mask_flat, (masks.len(), PHENOTYPE_VARIATION_COUNT), device)?
+        .to_dtype(dtype)?;
 
     Ok(StackedBlendShapes {
         blendshapes,
@@ -289,7 +284,9 @@ fn set_mask(
     components: &[&str],
 ) {
     for c in components {
-        let idx = *label_idx.get(c).unwrap_or_else(|| panic!("unknown label {c}"));
+        let idx = *label_idx
+            .get(c)
+            .unwrap_or_else(|| panic!("unknown label {c}"));
         mask[idx] = 1.0;
     }
 }

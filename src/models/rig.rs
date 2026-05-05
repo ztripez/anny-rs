@@ -133,12 +133,13 @@ pub struct BoneHierarchy {
 /// Walks the rig in DFS order starting from the unique root, mirroring
 /// `parse_recursively` in `full_model.py:208–215`. Order matters: children
 /// are encountered in the order they appear in the JSON map.
-fn dfs_topological_order(
-    bones: &[(String, RigBoneJson)],
-) -> Result<Vec<usize>, RigError> {
+fn dfs_topological_order(bones: &[(String, RigBoneJson)]) -> Result<Vec<usize>, RigError> {
     // Map from bone name → index in the input list.
-    let name_to_idx: HashMap<&str, usize> =
-        bones.iter().enumerate().map(|(i, (n, _))| (n.as_str(), i)).collect();
+    let name_to_idx: HashMap<&str, usize> = bones
+        .iter()
+        .enumerate()
+        .map(|(i, (n, _))| (n.as_str(), i))
+        .collect();
 
     // Find the unique root.
     let roots: Vec<usize> = bones
@@ -228,14 +229,15 @@ pub fn build_hierarchy(
         let parent_idx = parents[idx];
         // Move skinning weights from removed bone → its parent.
         if let Some(child_weights) = weights.weights.remove(to_remove)
-            && parent_idx >= 0 {
-                let parent_name = labels[parent_idx as usize].clone();
-                weights
-                    .weights
-                    .entry(parent_name)
-                    .or_default()
-                    .extend(child_weights);
-            }
+            && parent_idx >= 0
+        {
+            let parent_name = labels[parent_idx as usize].clone();
+            weights
+                .weights
+                .entry(parent_name)
+                .or_default()
+                .extend(child_weights);
+        }
         // Reparent children of the removed bone to the grandparent. Indices
         // > idx need to be decremented after the pop.
         for p in parents.iter_mut() {
@@ -343,7 +345,12 @@ mod tests {
             .filter(|(_, b)| b.parent.is_empty())
             .map(|(n, _)| n)
             .collect();
-        assert_eq!(roots.len(), 1, "expected exactly one root, found {:?}", roots);
+        assert_eq!(
+            roots.len(),
+            1,
+            "expected exactly one root, found {:?}",
+            roots
+        );
     }
 
     #[test]
@@ -351,7 +358,10 @@ mod tests {
         let weights =
             load_weights_json(data_root().join("mpfb2/rigs/standard/weights.default.json"))
                 .unwrap();
-        assert!(weights.weights.len() > 50, "expected many bones to have weights");
+        assert!(
+            weights.weights.len() > 50,
+            "expected many bones to have weights"
+        );
     }
 
     #[test]
@@ -391,9 +401,15 @@ mod tests {
                 weighted += 1;
             }
         }
-        assert!(weighted > 18000, "expected most vertices to have weights, got {weighted}");
-        assert!(vbm.max_bones_per_vertex >= 4 && vbm.max_bones_per_vertex <= 16,
-                "max bones per vertex {} outside expected range", vbm.max_bones_per_vertex);
+        assert!(
+            weighted > 18000,
+            "expected most vertices to have weights, got {weighted}"
+        );
+        assert!(
+            vbm.max_bones_per_vertex >= 4 && vbm.max_bones_per_vertex <= 16,
+            "max bones per vertex {} outside expected range",
+            vbm.max_bones_per_vertex
+        );
     }
 
     #[test]

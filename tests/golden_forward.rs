@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use anny_rs::anthropometry::Anthropometry;
 use anny_rs::face_segmentation::FaceSegmentation;
 use anny_rs::models::full_model::{Model, ModelOptions, PoseParameterization, SkinningMethod};
-use anny_rs::models::presets::{create_hand_model, create_head_model, HandSide};
+use anny_rs::models::presets::{HandSide, create_hand_model, create_head_model};
 use anny_rs::phenotype::PhenotypeValues;
 
 fn fixtures_dir() -> PathBuf {
@@ -59,11 +59,7 @@ fn max_abs_err(a: &[f64], b: &[f64]) -> f64 {
 fn rms_err(a: &[f64], b: &[f64]) -> f64 {
     assert_eq!(a.len(), b.len());
     let n = a.len() as f64;
-    let sum_sq: f64 = a
-        .iter()
-        .zip(b.iter())
-        .map(|(x, y)| (x - y).powi(2))
-        .sum();
+    let sum_sq: f64 = a.iter().zip(b.iter()).map(|(x, y)| (x - y).powi(2)).sum();
     (sum_sq / n).sqrt()
 }
 
@@ -81,7 +77,12 @@ fn golden_template_vertices_match_python() {
     let model = build_model();
     let (golden, dims) = read_golden("template_vertices");
     assert_eq!(dims, vec![model.vertex_count(), 3]);
-    let got: Vec<f64> = model.template_vertices.flatten_all().unwrap().to_vec1().unwrap();
+    let got: Vec<f64> = model
+        .template_vertices
+        .flatten_all()
+        .unwrap()
+        .to_vec1()
+        .unwrap();
     let max = max_abs_err(&got, &golden);
     let rms = rms_err(&got, &golden);
     eprintln!("template_vertices: max_abs={max:.3e} rms={rms:.3e}");
@@ -130,7 +131,12 @@ fn golden_rest_bone_poses_match_python() {
         .unwrap();
     let (golden, dims) = read_golden("rest_bone_poses");
     assert_eq!(dims, out.rest_bone_poses.dims().to_vec());
-    let got: Vec<f64> = out.rest_bone_poses.flatten_all().unwrap().to_vec1().unwrap();
+    let got: Vec<f64> = out
+        .rest_bone_poses
+        .flatten_all()
+        .unwrap()
+        .to_vec1()
+        .unwrap();
     let max = max_abs_err(&got, &golden);
     let rms = rms_err(&got, &golden);
     eprintln!("rest_bone_poses: max_abs={max:.3e} rms={rms:.3e}");
@@ -138,7 +144,10 @@ fn golden_rest_bone_poses_match_python() {
     // rotmat, where Python (roma) uses a different numerical path than our
     // host-side conversions. ~1e-7 abs (100 nanometers on a 1 m body) is the
     // expected precision.
-    assert!(max < 1e-6, "rest_bone_poses max abs err = {max} (rms {rms})");
+    assert!(
+        max < 1e-6,
+        "rest_bone_poses max abs err = {max} (rms {rms})"
+    );
 }
 
 #[test]
@@ -253,9 +262,10 @@ fn golden_anthropometry_matches_python() {
         let max = max_abs_err(&got, &golden);
         let scale = golden[0].abs().max(1.0);
         let rel = max / scale;
-        eprintln!("{name}: got={:.6} golden={:.6} abs_err={:.3e} rel_err={:.3e}",
-                  got[0], golden[0], max, rel);
+        eprintln!(
+            "{name}: got={:.6} golden={:.6} abs_err={:.3e} rel_err={:.3e}",
+            got[0], golden[0], max, rel
+        );
         assert!(rel < 1e-6, "{name} relative err {rel} exceeds 1e-6");
     }
 }
-

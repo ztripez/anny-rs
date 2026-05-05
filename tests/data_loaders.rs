@@ -42,7 +42,10 @@ fn loads_macrodetails_target() {
     // The file mutates many but not all vertices; sanity-check that *some*
     // entries are non-zero and the buffer is the right size.
     let nonzero = buf.iter().filter(|x| **x != 0.0).count();
-    assert!(nonzero > 100, "expected many non-zero deltas, got {nonzero}");
+    assert!(
+        nonzero > 100,
+        "expected many non-zero deltas, got {nonzero}"
+    );
 }
 
 #[test]

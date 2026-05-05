@@ -30,7 +30,10 @@ pub const PHENOTYPE_VARIATIONS: &[(&str, &[&str])] = &[
     ("height", &["minheight", "maxheight"]),
     ("proportions", &["idealproportions", "uncommonproportions"]),
     ("cupsize", &["mincup", "averagecup", "maxcup"]),
-    ("firmness", &["minfirmness", "averagefirmness", "maxfirmness"]),
+    (
+        "firmness",
+        &["minfirmness", "averagefirmness", "maxfirmness"],
+    ),
 ];
 
 /// Total number of variation columns (== number of columns in the phen vector
@@ -158,9 +161,27 @@ pub fn blendshape_coefficients(
     let coeffs_muscle = interp_coeffs(&values.muscle, &anchors.muscle, extrapolate, dtype, device)?;
     let coeffs_weight = interp_coeffs(&values.weight, &anchors.weight, extrapolate, dtype, device)?;
     let coeffs_height = interp_coeffs(&values.height, &anchors.height, extrapolate, dtype, device)?;
-    let coeffs_proportions = interp_coeffs(&values.proportions, &anchors.proportions, extrapolate, dtype, device)?;
-    let coeffs_cupsize = interp_coeffs(&values.cupsize, &anchors.cupsize, extrapolate, dtype, device)?;
-    let coeffs_firmness = interp_coeffs(&values.firmness, &anchors.firmness, extrapolate, dtype, device)?;
+    let coeffs_proportions = interp_coeffs(
+        &values.proportions,
+        &anchors.proportions,
+        extrapolate,
+        dtype,
+        device,
+    )?;
+    let coeffs_cupsize = interp_coeffs(
+        &values.cupsize,
+        &anchors.cupsize,
+        extrapolate,
+        dtype,
+        device,
+    )?;
+    let coeffs_firmness = interp_coeffs(
+        &values.firmness,
+        &anchors.firmness,
+        extrapolate,
+        dtype,
+        device,
+    )?;
 
     let batch_size = [
         &coeffs_age,
@@ -355,7 +376,11 @@ mod tests {
         // mask returns 0.5 for the boundary positions and 0 / 0.5 for others.
         // Easier check: every column is in [0, 1].
         for i in 0..26 {
-            assert!(v[0][i] >= -1e-12 && v[0][i] <= 1.0 + 1e-12, "col {i} = {}", v[0][i]);
+            assert!(
+                v[0][i] >= -1e-12 && v[0][i] <= 1.0 + 1e-12,
+                "col {i} = {}",
+                v[0][i]
+            );
         }
     }
 
@@ -396,8 +421,8 @@ mod tests {
         // Columns 0=african, 1=asian, 2=caucasian, 3=male, 4=female
         let anchors = PhenotypeAnchors::build(dtype, &device).unwrap();
         let mut mask_data = vec![0.0_f64; 2 * 26];
-        mask_data[0] = 1.0;  // shape 0: african
-        mask_data[1] = 1.0;  // shape 0: asian
+        mask_data[0] = 1.0; // shape 0: african
+        mask_data[1] = 1.0; // shape 0: asian
         mask_data[26 + 4] = 1.0; // shape 1: female
         let mask = Tensor::from_vec(mask_data, (2, 26), &device).unwrap();
 

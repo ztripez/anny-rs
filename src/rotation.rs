@@ -71,7 +71,8 @@ pub fn rotvec_to_rotmat(rotvec: &Tensor) -> Result<Tensor> {
     let theta = rotvec.sqr()?.sum_keepdim(last)?.sqrt()?; // [..., 1]
 
     // Avoid division by zero: where theta ≈ 0 we'll fall back to 1.
-    let safe_theta = theta.broadcast_maximum(&Tensor::new(1e-30_f64, theta.device())?.to_dtype(theta.dtype())?)?;
+    let safe_theta = theta
+        .broadcast_maximum(&Tensor::new(1e-30_f64, theta.device())?.to_dtype(theta.dtype())?)?;
     let unit = rotvec.broadcast_div(&safe_theta)?; // [..., 3]
 
     let cos_t = theta.cos()?;
@@ -93,9 +94,7 @@ pub fn rotvec_to_rotmat(rotvec: &Tensor) -> Result<Tensor> {
     let row2 = Tensor::cat(&[&neg_ky, &kx, &zero], last)?;
     let k_cross = Tensor::stack(&[&row0, &row1, &row2], last)?; // [..., 3, 3]
 
-    let outer = unit
-        .unsqueeze(last + 1)?
-        .matmul(&unit.unsqueeze(last)?)?; // [..., 3, 3]
+    let outer = unit.unsqueeze(last + 1)?.matmul(&unit.unsqueeze(last)?)?; // [..., 3, 3]
 
     let eye = identity_3x3_like(rotvec)?;
 
@@ -129,42 +128,28 @@ pub fn rotmat_to_unitquat(rotmat: &Tensor) -> Result<Tensor> {
 
     let mut out = Vec::with_capacity(batch * 4);
     for m in &host {
-        let r00 = m[0][0]; let r01 = m[0][1]; let r02 = m[0][2];
-        let r10 = m[1][0]; let r11 = m[1][1]; let r12 = m[1][2];
-        let r20 = m[2][0]; let r21 = m[2][1]; let r22 = m[2][2];
+        let r00 = m[0][0];
+        let r01 = m[0][1];
+        let r02 = m[0][2];
+        let r10 = m[1][0];
+        let r11 = m[1][1];
+        let r12 = m[1][2];
+        let r20 = m[2][0];
+        let r21 = m[2][1];
+        let r22 = m[2][2];
         let trace = r00 + r11 + r22;
         let (x, y, z, w) = if trace > 0.0 {
             let s = (trace + 1.0).sqrt() * 2.0;
-            (
-                (r21 - r12) / s,
-                (r02 - r20) / s,
-                (r10 - r01) / s,
-                0.25 * s,
-            )
+            ((r21 - r12) / s, (r02 - r20) / s, (r10 - r01) / s, 0.25 * s)
         } else if r00 > r11 && r00 > r22 {
             let s = (1.0 + r00 - r11 - r22).sqrt() * 2.0;
-            (
-                0.25 * s,
-                (r01 + r10) / s,
-                (r02 + r20) / s,
-                (r21 - r12) / s,
-            )
+            (0.25 * s, (r01 + r10) / s, (r02 + r20) / s, (r21 - r12) / s)
         } else if r11 > r22 {
             let s = (1.0 + r11 - r00 - r22).sqrt() * 2.0;
-            (
-                (r01 + r10) / s,
-                0.25 * s,
-                (r12 + r21) / s,
-                (r02 - r20) / s,
-            )
+            ((r01 + r10) / s, 0.25 * s, (r12 + r21) / s, (r02 - r20) / s)
         } else {
             let s = (1.0 + r22 - r00 - r11).sqrt() * 2.0;
-            (
-                (r02 + r20) / s,
-                (r12 + r21) / s,
-                0.25 * s,
-                (r10 - r01) / s,
-            )
+            ((r02 + r20) / s, (r12 + r21) / s, 0.25 * s, (r10 - r01) / s)
         };
         out.extend([x, y, z, w]);
     }
@@ -228,9 +213,11 @@ pub fn rigid_to_homogeneous(linear: &Tensor, translation: &Tensor) -> Result<Ten
     bottom_shape.push(1);
     bottom_shape.push(4);
     let bottom_data = vec![0.0_f64, 0.0, 0.0, 1.0];
-    let bottom_unbroadcast = Tensor::from_vec(bottom_data, (1, 4), linear.device())?
-        .to_dtype(linear.dtype())?;
-    let bottom = bottom_unbroadcast.broadcast_as(bottom_shape)?.contiguous()?;
+    let bottom_unbroadcast =
+        Tensor::from_vec(bottom_data, (1, 4), linear.device())?.to_dtype(linear.dtype())?;
+    let bottom = bottom_unbroadcast
+        .broadcast_as(bottom_shape)?
+        .contiguous()?;
     Tensor::cat(&[&top, &bottom], last - 1)?.contiguous()
 }
 
@@ -287,8 +274,12 @@ pub fn rigid_points_registration(
     let dtype = src.dtype();
     let device = src.device().clone();
 
-    let src_h = src.to_dtype(candle_core::DType::F64)?.to_device(&candle_core::Device::Cpu)?;
-    let tgt_h = tgt.to_dtype(candle_core::DType::F64)?.to_device(&candle_core::Device::Cpu)?;
+    let src_h = src
+        .to_dtype(candle_core::DType::F64)?
+        .to_device(&candle_core::Device::Cpu)?;
+    let tgt_h = tgt
+        .to_dtype(candle_core::DType::F64)?
+        .to_device(&candle_core::Device::Cpu)?;
 
     let dims = src_h.dims();
     if dims.len() != 3 || dims[2] != 3 {
@@ -393,9 +384,15 @@ pub fn rigid_points_registration(
 // ────────────────────────────────────────────────────────────────────────────
 
 fn stack_3x3(
-    m00: &Tensor, m01: &Tensor, m02: &Tensor,
-    m10: &Tensor, m11: &Tensor, m12: &Tensor,
-    m20: &Tensor, m21: &Tensor, m22: &Tensor,
+    m00: &Tensor,
+    m01: &Tensor,
+    m02: &Tensor,
+    m10: &Tensor,
+    m11: &Tensor,
+    m12: &Tensor,
+    m20: &Tensor,
+    m21: &Tensor,
+    m22: &Tensor,
 ) -> Result<Tensor> {
     // Each input is `[..., 1, 1]`. Concatenate columns then rows.
     let last = m00.rank() - 1;
@@ -429,7 +426,9 @@ mod tests {
     use approx::assert_relative_eq;
     use candle_core::{Device, Tensor};
 
-    fn cpu() -> Device { Device::Cpu }
+    fn cpu() -> Device {
+        Device::Cpu
+    }
 
     #[test]
     fn rotvec_zero_is_identity() {
@@ -465,12 +464,7 @@ mod tests {
         let angle = Tensor::from_vec(vec![std::f64::consts::FRAC_PI_2], 1, &cpu()).unwrap();
         let m_euler = euler_to_rotmat('x', &angle, false).unwrap();
         let m_rotvec = rotvec_to_rotmat(
-            &Tensor::from_vec(
-                vec![std::f64::consts::FRAC_PI_2, 0.0, 0.0],
-                (1, 3),
-                &cpu(),
-            )
-            .unwrap(),
+            &Tensor::from_vec(vec![std::f64::consts::FRAC_PI_2, 0.0, 0.0], (1, 3), &cpu()).unwrap(),
         )
         .unwrap();
         let a: Vec<Vec<Vec<f64>>> = m_euler.to_vec3().unwrap();
@@ -534,10 +528,16 @@ mod tests {
     #[test]
     fn quat_product_identity() {
         // Identity quaternion is (0,0,0,1).
-        let q = Tensor::from_vec(vec![0.0_f64, 0.5, 0.0, 0.5_f64.sqrt()], 4, &cpu())
-            .unwrap();
+        let q = Tensor::from_vec(vec![0.0_f64, 0.5, 0.0, 0.5_f64.sqrt()], 4, &cpu()).unwrap();
         // Normalize for safety.
-        let norm: f64 = q.sqr().unwrap().sum_all().unwrap().to_scalar::<f64>().unwrap().sqrt();
+        let norm: f64 = q
+            .sqr()
+            .unwrap()
+            .sum_all()
+            .unwrap()
+            .to_scalar::<f64>()
+            .unwrap()
+            .sqrt();
         let q = q.affine(1.0 / norm, 0.0).unwrap();
 
         let id = Tensor::from_vec(vec![0.0_f64, 0.0, 0.0, 1.0], 4, &cpu()).unwrap();
@@ -552,8 +552,9 @@ mod tests {
     #[test]
     fn rigid_homogeneous_roundtrip() {
         // Build a rotation + translation, pack to homogeneous, unpack, repack.
-        let r = rotvec_to_rotmat(&Tensor::from_vec(vec![0.3_f64, 0.4, 0.1], (1, 3), &cpu()).unwrap())
-            .unwrap();
+        let r =
+            rotvec_to_rotmat(&Tensor::from_vec(vec![0.3_f64, 0.4, 0.1], (1, 3), &cpu()).unwrap())
+                .unwrap();
         let t = Tensor::from_vec(vec![0.7_f64, -1.2, 0.3], (1, 3), &cpu()).unwrap();
         let h = rigid_to_homogeneous(&r, &t).unwrap();
         assert_eq!(h.dims(), &[1, 4, 4]);
@@ -572,8 +573,9 @@ mod tests {
 
     #[test]
     fn rigid_inverse_undoes_transform() {
-        let r = rotvec_to_rotmat(&Tensor::from_vec(vec![0.3_f64, -0.4, 0.7], (1, 3), &cpu()).unwrap())
-            .unwrap();
+        let r =
+            rotvec_to_rotmat(&Tensor::from_vec(vec![0.3_f64, -0.4, 0.7], (1, 3), &cpu()).unwrap())
+                .unwrap();
         let t = Tensor::from_vec(vec![0.5_f64, -0.2, 1.1], (1, 3), &cpu()).unwrap();
         let h = rigid_to_homogeneous(&r, &t).unwrap();
         let h_inv = rigid_inverse_homogeneous(&h).unwrap();
@@ -591,25 +593,26 @@ mod tests {
     fn registration_recovers_known_rigid() {
         // Take src, apply a known R + t, then recover them.
         let src_data: Vec<f64> = vec![
-            0.0, 0.0, 0.0,
-            1.0, 0.0, 0.0,
-            0.0, 1.0, 0.0,
-            0.0, 0.0, 1.0,
-            1.0, 1.0, 0.0,
-            0.5, 0.5, 0.5,
+            0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.5, 0.5,
+            0.5,
         ];
         let src = Tensor::from_vec(src_data.clone(), (1, 6, 3), &cpu()).unwrap();
 
         // Known rotation: 30° around z.
         let theta = 30.0_f64.to_radians();
-        let r = rotvec_to_rotmat(&Tensor::from_vec(vec![0.0_f64, 0.0, theta], (1, 3), &cpu()).unwrap())
-            .unwrap();
+        let r =
+            rotvec_to_rotmat(&Tensor::from_vec(vec![0.0_f64, 0.0, theta], (1, 3), &cpu()).unwrap())
+                .unwrap();
         let t = Tensor::from_vec(vec![0.4_f64, -0.7, 1.2], (1, 3), &cpu()).unwrap();
 
         // tgt = R @ src + t
-        let tgt = r.matmul(&src.transpose(1, 2).unwrap()).unwrap()
-            .transpose(1, 2).unwrap()
-            .broadcast_add(&t.unsqueeze(1).unwrap()).unwrap();
+        let tgt = r
+            .matmul(&src.transpose(1, 2).unwrap())
+            .unwrap()
+            .transpose(1, 2)
+            .unwrap()
+            .broadcast_add(&t.unsqueeze(1).unwrap())
+            .unwrap();
 
         let (r_hat, t_hat) = rigid_points_registration(&src, &tgt, None).unwrap();
         let r_v: Vec<Vec<Vec<f64>>> = r.to_vec3().unwrap();

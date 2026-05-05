@@ -25,7 +25,9 @@ fn data_root() -> PathBuf {
 }
 
 fn fixtures_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
 }
 
 fn read_counts() -> std::collections::HashMap<String, String> {
@@ -70,8 +72,18 @@ fn alt_topology_3pct_builds_and_runs() {
     let v: Vec<f64> = out.vertices.flatten_all().unwrap().to_vec1().unwrap();
     let bad = v.iter().filter(|x| !x.is_finite()).count();
     assert_eq!(bad, 0, "{bad} non-finite vertex coords");
-    let z_min = v.iter().skip(2).step_by(3).cloned().fold(f64::INFINITY, f64::min);
-    let z_max = v.iter().skip(2).step_by(3).cloned().fold(f64::NEG_INFINITY, f64::max);
+    let z_min = v
+        .iter()
+        .skip(2)
+        .step_by(3)
+        .cloned()
+        .fold(f64::INFINITY, f64::min);
+    let z_max = v
+        .iter()
+        .skip(2)
+        .step_by(3)
+        .cloned()
+        .fold(f64::NEG_INFINITY, f64::max);
     let height = z_max - z_min;
     eprintln!("alt topology height = {height:.3} m");
     assert!(height > 1.0 && height < 2.5, "height {height} out of range");

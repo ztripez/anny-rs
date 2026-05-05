@@ -18,7 +18,7 @@ use candle_core::{D, DType, Device, Result, Tensor};
 use thiserror::Error;
 
 use crate::models::full_model::{Model, PoseParameterization};
-use crate::phenotype::{PhenotypeValues, PHENOTYPE_VARIATIONS};
+use crate::phenotype::{PHENOTYPE_VARIATIONS, PhenotypeValues};
 use crate::rotation::{rigid_points_registration, rigid_to_homogeneous};
 
 #[derive(Debug, Error)]
@@ -148,11 +148,7 @@ impl<'a> Regressor<'a> {
     /// Run the alternating fit. `target_vertices` is `[B, V, 3]` (or `[V, 3]`
     /// — promoted to a singleton batch). Phenotype keys in
     /// `excluded_phenotypes` are held constant.
-    pub fn fit(
-        &self,
-        target_vertices: &Tensor,
-        excluded_phenotypes: &[&str],
-    ) -> Result<FitResult> {
+    pub fn fit(&self, target_vertices: &Tensor, excluded_phenotypes: &[&str]) -> Result<FitResult> {
         self.fit_inner(target_vertices, excluded_phenotypes, None, None)
     }
 
@@ -198,9 +194,11 @@ impl<'a> Regressor<'a> {
         let mut pose_params = identity.clone();
 
         // Initial forward.
-        let mut output =
-            self.model
-                .forward(Some(&pose_params), &phen, Some(PoseParameterization::RootRelativeWorld))?;
+        let mut output = self.model.forward(
+            Some(&pose_params),
+            &phen,
+            Some(PoseParameterization::RootRelativeWorld),
+        )?;
         let unique_idx_t = self.unique_idx_tensor()?;
         let mut v_ref = output.vertices.index_select(&unique_idx_t, 1)?;
 
@@ -235,12 +233,7 @@ impl<'a> Regressor<'a> {
 
         for iter in 0..self.opts.max_n_iters {
             // 1. Pose update via joint-wise registration.
-            let (new_pose, v_hat) = self.jointwise_registration(
-                &v_ref,
-                &target,
-                &b_ref,
-                &phen,
-            )?;
+            let (new_pose, v_hat) = self.jointwise_registration(&v_ref, &target, &b_ref, &phen)?;
             pose_params = new_pose;
 
             if self.opts.verbose {
@@ -253,7 +246,7 @@ impl<'a> Regressor<'a> {
                 let jacobian = self.compute_macro_jacobian(&pose_params, &phen)?; // [B, V'*3, n_optim]
                 let b_resid = (target.index_select(&self.sample_idx, 1)?
                     - v_hat.index_select(&self.sample_idx, 1)?)?
-                    .reshape((bs, ()))?;
+                .reshape((bs, ()))?;
                 let delta = self.tikhonov_solve(&jacobian, &b_resid, &optim_keys)?;
                 self.apply_phenotype_delta(&mut phen, &delta, &optim_keys, bs, max_delta)?;
             }
@@ -345,8 +338,16 @@ impl<'a> Regressor<'a> {
                 for (i, &k) in idxs.iter().enumerate() {
                     let r_off = bi * n_unique * 3 + (k as usize) * 3;
                     let t_off = bi * n_unique * 3 + (k as usize) * 3;
-                    let xr = [v_ref_flat[r_off], v_ref_flat[r_off + 1], v_ref_flat[r_off + 2]];
-                    let xt = [v_tar_flat[t_off], v_tar_flat[t_off + 1], v_tar_flat[t_off + 2]];
+                    let xr = [
+                        v_ref_flat[r_off],
+                        v_ref_flat[r_off + 1],
+                        v_ref_flat[r_off + 2],
+                    ];
+                    let xt = [
+                        v_tar_flat[t_off],
+                        v_tar_flat[t_off + 1],
+                        v_tar_flat[t_off + 2],
+                    ];
                     let w = ws[i];
                     if w > max_w {
                         max_w = w;
@@ -411,11 +412,9 @@ impl<'a> Regressor<'a> {
 
         // Run model with absolute parameterization on b_tar, then convert to
         // root_relative_world.
-        let abs_out = self.model.forward(
-            Some(&b_tar),
-            phen,
-            Some(PoseParameterization::Absolute),
-        )?;
+        let abs_out =
+            self.model
+                .forward(Some(&b_tar), phen, Some(PoseParameterization::Absolute))?;
         let pose_root = self
             .model
             .pose_parameterization(&abs_out, PoseParameterization::RootRelativeWorld)?;
@@ -433,11 +432,8 @@ impl<'a> Regressor<'a> {
             phen,
             Some(PoseParameterization::RootRelativeWorld),
         )?;
-        let (r_root, t_root) = rigid_points_registration(
-            &neutral_out.vertices,
-            &abs_out.vertices,
-            None,
-        )?;
+        let (r_root, t_root) =
+            rigid_points_registration(&neutral_out.vertices, &abs_out.vertices, None)?;
         let new_root = rigid_to_homogeneous(&r_root, &t_root)?.unsqueeze(1)?;
         let pose_root = self.replace_root(&pose_root, &new_root)?;
 
@@ -458,10 +454,7 @@ impl<'a> Regressor<'a> {
         // root entry = identity, mirroring Python lines 301–306.
         let bs = pose_root.dim(0)?;
         let n_bones = self.model.bone_count();
-        let mut flat: Vec<f64> = pose_root
-            .to_dtype(DType::F64)?
-            .flatten_all()?
-            .to_vec1()?;
+        let mut flat: Vec<f64> = pose_root.to_dtype(DType::F64)?.flatten_all()?.to_vec1()?;
         for bi in 0..bs {
             // Root → identity.
             let off_root = (bi * n_bones) * 16;
@@ -485,8 +478,7 @@ impl<'a> Regressor<'a> {
                 }
             }
         }
-        Tensor::from_vec(flat, (bs, n_bones, 4, 4), &self.model.device)?
-            .to_dtype(self.model.dtype)
+        Tensor::from_vec(flat, (bs, n_bones, 4, 4), &self.model.device)?.to_dtype(self.model.dtype)
     }
 
     fn compute_macro_jacobian(
@@ -553,7 +545,8 @@ impl<'a> Regressor<'a> {
         let bs = jacobian.dim(0)?;
         let _v3 = jacobian.dim(1)?;
         let labels = self.model.phenotype_labels();
-        let label_to_col: HashMap<&str, usize> = labels.iter().enumerate().map(|(i, k)| (*k, i)).collect();
+        let label_to_col: HashMap<&str, usize> =
+            labels.iter().enumerate().map(|(i, k)| (*k, i)).collect();
         let cols: Vec<usize> = optim_keys
             .iter()
             .map(|k| label_to_col[k.as_str()])
@@ -623,8 +616,8 @@ impl<'a> Regressor<'a> {
                 let d = delta_host[bi * optim_keys.len() + i].clamp(-max_delta, max_delta);
                 current[bi] = (current[bi] + d).clamp(0.01, 0.99);
             }
-            let new_t = Tensor::from_vec(current, bs, &self.model.device)?
-                .to_dtype(self.model.dtype)?;
+            let new_t =
+                Tensor::from_vec(current, bs, &self.model.device)?.to_dtype(self.model.dtype)?;
             phenotype_set(phen, key, new_t)?;
         }
         Ok(())
@@ -713,7 +706,11 @@ fn broadcast_phenotype(
     device: &Device,
 ) -> Result<PhenotypeValues> {
     let go = |t: &Tensor| -> Result<Tensor> {
-        let cur = if t.rank() == 0 { t.unsqueeze(0)? } else { t.clone() };
+        let cur = if t.rank() == 0 {
+            t.unsqueeze(0)?
+        } else {
+            t.clone()
+        };
         let cur_b = cur.dim(0)?;
         let promoted = if cur_b == bs {
             cur
@@ -765,14 +762,8 @@ fn build_partition(model: &Model, unique_ids: &[u32]) -> Result<Partition> {
     let unique_t = Tensor::from_vec(unique_ids.to_vec(), n_unique, device)?;
     let i_unique = model.vertex_bone_indices.index_select(&unique_t, 0)?;
     let w_unique = model.vertex_bone_weights.index_select(&unique_t, 0)?;
-    let i_host: Vec<u32> = i_unique
-        .to_dtype(DType::U32)?
-        .flatten_all()?
-        .to_vec1()?;
-    let w_host: Vec<f64> = w_unique
-        .to_dtype(DType::F64)?
-        .flatten_all()?
-        .to_vec1()?;
+    let i_host: Vec<u32> = i_unique.to_dtype(DType::U32)?.flatten_all()?.to_vec1()?;
+    let w_host: Vec<f64> = w_unique.to_dtype(DType::F64)?.flatten_all()?.to_vec1()?;
 
     let mut joint_vertex_sets: Vec<Vec<u32>> = vec![Vec::new(); n_bones];
     let mut vertex_joint_weights: Vec<Vec<f64>> = vec![Vec::new(); n_bones];
@@ -822,9 +813,15 @@ fn sanitize_pose_parameters(pose: &Tensor) -> Result<Tensor> {
             let off = (bi * nj + j) * 16;
             // Read 3×3.
             let m = nalgebra::Matrix3::<f64>::new(
-                flat[off], flat[off + 1], flat[off + 2],
-                flat[off + 4], flat[off + 5], flat[off + 6],
-                flat[off + 8], flat[off + 9], flat[off + 10],
+                flat[off],
+                flat[off + 1],
+                flat[off + 2],
+                flat[off + 4],
+                flat[off + 5],
+                flat[off + 6],
+                flat[off + 8],
+                flat[off + 9],
+                flat[off + 10],
             );
             let svd = m.svd(true, true);
             let u = svd.u.unwrap();
@@ -847,7 +844,11 @@ fn repeat_phenotype(phen: &PhenotypeValues, bs: usize, repeats: usize) -> Result
     // For each scalar field, broadcast `[bs] → [bs, repeats] → [bs * repeats]`
     // (interleaved: bi=0,p=0; bi=0,p=1; ...; bi=0,p=repeats-1; bi=1,p=0; ...).
     let go = |t: &Tensor| -> Result<Tensor> {
-        let cur = if t.rank() == 0 { t.unsqueeze(0)? } else { t.clone() };
+        let cur = if t.rank() == 0 {
+            t.unsqueeze(0)?
+        } else {
+            t.clone()
+        };
         let cur_b = cur.dim(0)?;
         let expanded = if cur_b == bs {
             cur
@@ -857,7 +858,10 @@ fn repeat_phenotype(phen: &PhenotypeValues, bs: usize, repeats: usize) -> Result
             candle_core::bail!("phenotype field has incompatible batch dim {cur_b}");
         };
         // Repeat along a new axis.
-        let r = expanded.unsqueeze(1)?.broadcast_as((bs, repeats))?.reshape((bs * repeats,))?;
+        let r = expanded
+            .unsqueeze(1)?
+            .broadcast_as((bs, repeats))?
+            .reshape((bs * repeats,))?;
         r.contiguous()
     };
     Ok(PhenotypeValues {
@@ -896,7 +900,8 @@ fn perturb_phenotype(
             let idx = bi * repeats + (i + 1);
             current[idx] += eps;
         }
-        let new_t = Tensor::from_vec(current, total, phen.age.device())?.to_dtype(phen.age.dtype())?;
+        let new_t =
+            Tensor::from_vec(current, total, phen.age.device())?.to_dtype(phen.age.dtype())?;
         phenotype_set(&mut phen, label, new_t)?;
     }
     Ok(phen)

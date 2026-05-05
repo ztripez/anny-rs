@@ -53,7 +53,9 @@ pub fn apply_linear_blendshape(
     let three = dims[2];
     let bs_flat = blendshapes.reshape((c, v * three))?;
     let bs_size = blendshape_coeffs.dim(0)?;
-    let mixed = blendshape_coeffs.matmul(&bs_flat)?.reshape((bs_size, v, three))?; // [B, V, 3]
+    let mixed = blendshape_coeffs
+        .matmul(&bs_flat)?
+        .reshape((bs_size, v, three))?; // [B, V, 3]
     let template_b = template.broadcast_as(mixed.shape())?;
     template_b.add(&mixed)
 }
@@ -247,23 +249,36 @@ mod tests {
     use super::*;
     use candle_core::Device;
 
-    fn cpu() -> Device { Device::Cpu }
+    fn cpu() -> Device {
+        Device::Cpu
+    }
 
     #[test]
     fn lbs_identity_transforms_passes_vertices_through() {
         // 1 batch, 4 vertices, 2 bones, 1 bone per vertex.
         let device = cpu();
-        let bs = 1; let v = 4; let m = 1; let k = 2;
+        let bs = 1;
+        let v = 4;
+        let m = 1;
+        let k = 2;
         let vertices = Tensor::from_vec(
-            vec![1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
-            (bs, v, 3), &device).unwrap();
+            vec![
+                1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+            ],
+            (bs, v, 3),
+            &device,
+        )
+        .unwrap();
         let weights = Tensor::ones((bs, v, m), DType::F64, &device).unwrap();
         let indices = Tensor::from_vec(vec![0u32, 1, 0, 1], (bs, v, m), &device).unwrap();
         let identity = Tensor::eye(4, DType::F64, &device).unwrap();
         let transforms = identity
-            .reshape((1, 1, 4, 4)).unwrap()
-            .broadcast_as((bs, k, 4, 4)).unwrap()
-            .contiguous().unwrap();
+            .reshape((1, 1, 4, 4))
+            .unwrap()
+            .broadcast_as((bs, k, 4, 4))
+            .unwrap()
+            .contiguous()
+            .unwrap();
 
         let out = linear_blend_skinning(&vertices, &weights, &indices, &transforms).unwrap();
         let in_v: Vec<f64> = vertices.flatten_all().unwrap().to_vec1().unwrap();
@@ -277,19 +292,18 @@ mod tests {
     fn lbs_translation_only() {
         // 1 batch, 2 vertices, 1 bone slot, 1 bone (just a translation).
         let device = cpu();
-        let bs = 1; let v = 2; let m = 1; let k = 1;
-        let vertices = Tensor::from_vec(
-            vec![0.0_f64, 0.0, 0.0, 1.0, 1.0, 1.0],
-            (bs, v, 3), &device).unwrap();
+        let bs = 1;
+        let v = 2;
+        let m = 1;
+        let k = 1;
+        let vertices =
+            Tensor::from_vec(vec![0.0_f64, 0.0, 0.0, 1.0, 1.0, 1.0], (bs, v, 3), &device).unwrap();
         let weights = Tensor::ones((bs, v, m), DType::F64, &device).unwrap();
         let indices = Tensor::from_vec(vec![0u32, 0], (bs, v, m), &device).unwrap();
 
         // Translation by (10, 20, 30).
         let mat = vec![
-            1.0_f64, 0.0, 0.0, 10.0,
-            0.0, 1.0, 0.0, 20.0,
-            0.0, 0.0, 1.0, 30.0,
-            0.0, 0.0, 0.0, 1.0,
+            1.0_f64, 0.0, 0.0, 10.0, 0.0, 1.0, 0.0, 20.0, 0.0, 0.0, 1.0, 30.0, 0.0, 0.0, 0.0, 1.0,
         ];
         let transforms = Tensor::from_vec(mat, (bs, k, 4, 4), &device).unwrap();
 
@@ -308,19 +322,27 @@ mod tests {
         // For a single bone (M=1), DQS and LBS should produce identical
         // results — both apply the same rigid transform.
         let device = cpu();
-        let bs = 1; let v = 4; let m = 1; let k = 1;
+        let bs = 1;
+        let v = 4;
+        let m = 1;
+        let k = 1;
 
         let r = crate::rotation::rotvec_to_rotmat(
-            &Tensor::from_vec(vec![0.3_f64, -0.2, 0.5], (1, 3), &device).unwrap()
-        ).unwrap();
+            &Tensor::from_vec(vec![0.3_f64, -0.2, 0.5], (1, 3), &device).unwrap(),
+        )
+        .unwrap();
         let t = Tensor::from_vec(vec![0.5_f64, -1.0, 2.5], (1, 3), &device).unwrap();
-        let transforms = rigid_to_homogeneous(&r, &t).unwrap()
-            .unsqueeze(0).unwrap();
+        let transforms = rigid_to_homogeneous(&r, &t).unwrap().unsqueeze(0).unwrap();
         assert_eq!(transforms.dims(), &[bs, k, 4, 4]);
 
         let vertices = Tensor::from_vec(
-            vec![1.0_f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.5, 0.5, 0.5],
-            (bs, v, 3), &device).unwrap();
+            vec![
+                1.0_f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.5, 0.5, 0.5,
+            ],
+            (bs, v, 3),
+            &device,
+        )
+        .unwrap();
         let weights = Tensor::ones((bs, v, m), DType::F64, &device).unwrap();
         let indices = Tensor::from_vec(vec![0u32; v * m], (bs, v, m), &device).unwrap();
 
@@ -337,17 +359,19 @@ mod tests {
     fn blendshape_application() {
         let device = cpu();
         // V=2 vertices, C=3 blend shapes
-        let template = Tensor::from_vec(vec![0.0_f64, 0.0, 0.0, 1.0, 1.0, 1.0], (2, 3), &device).unwrap();
+        let template =
+            Tensor::from_vec(vec![0.0_f64, 0.0, 0.0, 1.0, 1.0, 1.0], (2, 3), &device).unwrap();
         let blendshapes = Tensor::from_vec(
             vec![
                 // shape 0: translate v0 by (1, 0, 0)
-                1.0_f64, 0.0, 0.0, 0.0, 0.0, 0.0,
-                // shape 1: translate v1 by (0, 1, 0)
-                0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
-                // shape 2: translate v0 by (0, 0, -1)
+                1.0_f64, 0.0, 0.0, 0.0, 0.0, 0.0, // shape 1: translate v1 by (0, 1, 0)
+                0.0, 0.0, 0.0, 0.0, 1.0, 0.0, // shape 2: translate v0 by (0, 0, -1)
                 0.0, 0.0, -1.0, 0.0, 0.0, 0.0,
             ],
-            (3, 2, 3), &device).unwrap();
+            (3, 2, 3),
+            &device,
+        )
+        .unwrap();
         // coeffs: batch 1, [0.5, 0.0, 1.0]
         let coeffs = Tensor::from_vec(vec![0.5_f64, 0.0, 1.0], (1, 3), &device).unwrap();
         let out = apply_linear_blendshape(&template, &blendshapes, &coeffs).unwrap();

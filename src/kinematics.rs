@@ -73,9 +73,7 @@ pub fn parallel_forward_kinematic(
 ) -> Result<FkOutput> {
     let dims = rest_bone_poses.dims();
     if dims.len() != 4 || dims[2] != 4 || dims[3] != 4 {
-        candle_core::bail!(
-            "rest_bone_poses must be [bs, B, 4, 4], got {dims:?}"
-        );
+        candle_core::bail!("rest_bone_poses must be [bs, B, 4, 4], got {dims:?}");
     }
     let bs = dims[0];
     let n_bones = dims[1];
@@ -84,7 +82,9 @@ pub fn parallel_forward_kinematic(
 
     let rest_bone_poses_c = rest_bone_poses.contiguous()?;
     let delta_transforms_c = delta_transforms.contiguous()?;
-    let t_all = rest_bone_poses_c.matmul(&delta_transforms_c)?.contiguous()?; // [bs, B, 4, 4]
+    let t_all = rest_bone_poses_c
+        .matmul(&delta_transforms_c)?
+        .contiguous()?; // [bs, B, 4, 4]
     let rest_inv_all = rigid_inverse_homogeneous(&rest_bone_poses_c)?.contiguous()?; // [bs, B, 4, 4]
 
     // Per-bone results, populated in topological order.
@@ -271,9 +271,8 @@ pub fn get_bone_poses(
 
     // axis = cross_p / cross_p_norm. Where the norm is zero this produces NaN,
     // detected below by `axis · axis ≠ 1`.
-    let safe_norm = cross_p_norm.broadcast_maximum(
-        &Tensor::new(1e-30_f64, device)?.to_dtype(dtype)?,
-    )?;
+    let safe_norm =
+        cross_p_norm.broadcast_maximum(&Tensor::new(1e-30_f64, device)?.to_dtype(dtype)?)?;
     let axis = cross_p.broadcast_div(&safe_norm)?; // [bs, B, 3]
 
     let rotvec = axis.broadcast_mul(&angle.unsqueeze(D::Minus1)?)?.neg()?; // [bs, B, 3]
@@ -281,8 +280,7 @@ pub fn get_bone_poses(
 
     // is_valid = | axis · axis - 1 | < epsilon
     let axis_norm_sq = axis.sqr()?.sum(D::Minus1)?; // [bs, B]
-    let validity = (axis_norm_sq.affine(1.0, -1.0)?.abs()?)
-        .lt(epsilon)?; // [bs, B]
+    let validity = (axis_norm_sq.affine(1.0, -1.0)?.abs()?).lt(epsilon)?; // [bs, B]
     let validity_4d = validity
         .unsqueeze(D::Minus1)?
         .unsqueeze(D::Minus1)?
@@ -323,7 +321,11 @@ fn atan2_host(y: &Tensor, x: &Tensor) -> Result<Tensor> {
         .to_device(&candle_core::Device::Cpu)?
         .flatten_all()?
         .to_vec1()?;
-    let result: Vec<f64> = y_h.iter().zip(x_h.iter()).map(|(&yi, &xi)| yi.atan2(xi)).collect();
+    let result: Vec<f64> = y_h
+        .iter()
+        .zip(x_h.iter())
+        .map(|(&yi, &xi)| yi.atan2(xi))
+        .collect();
     Tensor::from_vec(result, dims, &device)?.to_dtype(dtype)
 }
 
@@ -356,8 +358,8 @@ fn pack_homogeneous(linear: &Tensor, translation: &Tensor) -> Result<Tensor> {
     let mut bottom_shape = leading.clone();
     bottom_shape.push(1);
     bottom_shape.push(4);
-    let bottom_unbroadcast = Tensor::from_vec(vec![0.0_f64, 0.0, 0.0, 1.0], (1, 4), device)?
-        .to_dtype(dtype)?;
+    let bottom_unbroadcast =
+        Tensor::from_vec(vec![0.0_f64, 0.0, 0.0, 1.0], (1, 4), device)?.to_dtype(dtype)?;
     let bottom = bottom_unbroadcast.broadcast_as(bottom_shape)?;
     Tensor::cat(&[&top, &bottom], n - 2)
 }
@@ -367,7 +369,9 @@ mod tests {
     use super::*;
     use candle_core::{DType, Device};
 
-    fn cpu() -> Device { Device::Cpu }
+    fn cpu() -> Device {
+        Device::Cpu
+    }
 
     #[test]
     fn fronts_simple_chain() {
@@ -465,5 +469,4 @@ mod tests {
         // Stack to [1, 3, 4, 4]
         Tensor::stack(&[&h1, &h2, &h3], 1).unwrap()
     }
-
 }

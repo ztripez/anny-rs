@@ -35,12 +35,18 @@ fn fit_recovers_known_phenotype() {
 
     // Build a target mesh from a known phenotype (different from defaults).
     let mut target_phen = PhenotypeValues::defaults(model.dtype, &model.device).unwrap();
-    target_phen.height = Tensor::from_vec(vec![0.8_f64], 1, &model.device).unwrap()
-        .to_dtype(model.dtype).unwrap();
-    target_phen.weight = Tensor::from_vec(vec![0.7_f64], 1, &model.device).unwrap()
-        .to_dtype(model.dtype).unwrap();
-    target_phen.muscle = Tensor::from_vec(vec![0.6_f64], 1, &model.device).unwrap()
-        .to_dtype(model.dtype).unwrap();
+    target_phen.height = Tensor::from_vec(vec![0.8_f64], 1, &model.device)
+        .unwrap()
+        .to_dtype(model.dtype)
+        .unwrap();
+    target_phen.weight = Tensor::from_vec(vec![0.7_f64], 1, &model.device)
+        .unwrap()
+        .to_dtype(model.dtype)
+        .unwrap();
+    target_phen.muscle = Tensor::from_vec(vec![0.6_f64], 1, &model.device)
+        .unwrap()
+        .to_dtype(model.dtype)
+        .unwrap();
 
     let target_out = model
         .forward(None, &target_phen, Some(PoseParameterization::RestRelative))
@@ -56,7 +62,10 @@ fn fit_recovers_known_phenotype() {
     };
     let reg = Regressor::new(&model, opts).unwrap();
     let result = reg
-        .fit(&target_vertices, &["cupsize", "firmness", "african", "asian", "caucasian"])
+        .fit(
+            &target_vertices,
+            &["cupsize", "firmness", "african", "asian", "caucasian"],
+        )
         .expect("fit succeeded");
 
     // PVE in millimetres.
@@ -95,12 +104,18 @@ fn fit_with_age_anchor_search_at_least_as_good_as_single_call() {
     // close to the true age).
     let model = build_model();
     let mut target_phen = PhenotypeValues::defaults(model.dtype, &model.device).unwrap();
-    target_phen.age = Tensor::from_vec(vec![0.4_f64], 1, &model.device).unwrap()
-        .to_dtype(model.dtype).unwrap();
-    target_phen.height = Tensor::from_vec(vec![0.7_f64], 1, &model.device).unwrap()
-        .to_dtype(model.dtype).unwrap();
-    target_phen.muscle = Tensor::from_vec(vec![0.55_f64], 1, &model.device).unwrap()
-        .to_dtype(model.dtype).unwrap();
+    target_phen.age = Tensor::from_vec(vec![0.4_f64], 1, &model.device)
+        .unwrap()
+        .to_dtype(model.dtype)
+        .unwrap();
+    target_phen.height = Tensor::from_vec(vec![0.7_f64], 1, &model.device)
+        .unwrap()
+        .to_dtype(model.dtype)
+        .unwrap();
+    target_phen.muscle = Tensor::from_vec(vec![0.55_f64], 1, &model.device)
+        .unwrap()
+        .to_dtype(model.dtype)
+        .unwrap();
     let target_out = model
         .forward(None, &target_phen, Some(PoseParameterization::RestRelative))
         .unwrap();

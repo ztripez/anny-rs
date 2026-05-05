@@ -18,7 +18,9 @@ fn data_root() -> PathBuf {
 }
 
 fn fixtures_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
 }
 
 fn read_counts(name: &str) -> std::collections::HashMap<String, usize> {
@@ -43,7 +45,11 @@ fn topology_default_face_count_matches_python() {
     opts.all_phenotypes = true;
     let model = Model::build(&opts).expect("model");
     let counts = read_counts("topology_default_counts.txt");
-    eprintln!("rust topology=default faces: {}; python: {}", model.faces.len(), counts["faces"]);
+    eprintln!(
+        "rust topology=default faces: {}; python: {}",
+        model.faces.len(),
+        counts["faces"]
+    );
     assert_eq!(model.faces.len(), counts["faces"]);
 }
 
@@ -88,8 +94,16 @@ fn anthropometry_works_after_pruning() {
     let anth = Anthropometry::new(&model).expect("anthropometry available after prune");
     let m = anth.measurements(&out.rest_vertices).unwrap();
     let height: Vec<f64> = m.height.flatten_all().unwrap().to_vec1().unwrap();
-    let waist: Vec<f64> = m.waist_circumference.flatten_all().unwrap().to_vec1().unwrap();
-    eprintln!("pruned anthropometry: height={:.4}m waist={:.4}m", height[0], waist[0]);
+    let waist: Vec<f64> = m
+        .waist_circumference
+        .flatten_all()
+        .unwrap()
+        .to_vec1()
+        .unwrap();
+    eprintln!(
+        "pruned anthropometry: height={:.4}m waist={:.4}m",
+        height[0], waist[0]
+    );
     // Plausible human range.
     assert!(height[0] > 1.0 && height[0] < 2.5);
     assert!(waist[0] > 0.4 && waist[0] < 1.5);

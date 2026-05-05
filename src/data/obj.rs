@@ -132,10 +132,10 @@ pub fn load(path: impl AsRef<Path>) -> Result<ObjMesh, ObjError> {
                     vids.push((v - 1) as u32);
                     if let Some(vt) = iter.next()
                         && !vt.is_empty()
-                            && let Ok(vti) = vt.parse::<i64>()
-                        {
-                            vtids.push((vti - 1) as u32);
-                        }
+                        && let Ok(vti) = vt.parse::<i64>()
+                    {
+                        vtids.push((vti - 1) as u32);
+                    }
                 }
                 current_group.face_vertex_indices.push(vids);
                 current_group.face_texture_coordinate_indices.push(vtids);

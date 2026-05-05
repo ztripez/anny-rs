@@ -45,7 +45,10 @@ pub fn linear_interpolation_coefficients(
         indices.push(clamped as i64);
     }
 
-    let lower: Vec<f64> = indices.iter().map(|&i| anchors_h[(i - 1) as usize]).collect();
+    let lower: Vec<f64> = indices
+        .iter()
+        .map(|&i| anchors_h[(i - 1) as usize])
+        .collect();
     let upper: Vec<f64> = indices.iter().map(|&i| anchors_h[i as usize]).collect();
 
     let mut alpha: Vec<f64> = value_h
@@ -115,4 +118,3 @@ mod tests {
         assert_relative_eq!(got[1][2], 1.0, epsilon = 1e-12);
     }
 }
-

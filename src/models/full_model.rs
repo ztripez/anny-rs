@@ -13,8 +13,10 @@ use thiserror::Error;
 
 use crate::data::obj::{self, ObjGroup};
 use crate::kinematics::{self, propagation_fronts};
-use crate::models::macrodetails::{self, default_world_transform, StackedBlendShapes};
-use crate::models::rig::{self, build_hierarchy, build_vertex_bone_matrix, BoneHierarchy, RigError};
+use crate::models::macrodetails::{self, StackedBlendShapes, default_world_transform};
+use crate::models::rig::{
+    self, BoneHierarchy, RigError, build_hierarchy, build_vertex_bone_matrix,
+};
 use crate::phenotype::{self, PhenotypeAnchors, PhenotypeValues};
 use crate::rotation::{euler_to_rotmat, rigid_from_homogeneous, rigid_inverse_homogeneous};
 use crate::skinning::{self, apply_linear_blendshape};
@@ -148,10 +150,10 @@ impl ModelOptions {
 
 pub struct Model {
     // ── mesh / skinning ──
-    pub template_vertices: Tensor,    // [V, 3]
-    pub blendshapes: Tensor,          // [C, V, 3]
-    pub vertex_bone_indices: Tensor,  // [V, M] u32
-    pub vertex_bone_weights: Tensor,  // [V, M]
+    pub template_vertices: Tensor,   // [V, 3]
+    pub blendshapes: Tensor,         // [C, V, 3]
+    pub vertex_bone_indices: Tensor, // [V, M] u32
+    pub vertex_bone_weights: Tensor, // [V, M]
     pub faces: Vec<Vec<u32>>,
     pub texture_coordinates: Vec<[f64; 2]>,
     pub face_texture_coordinate_indices: Vec<Vec<u32>>,
@@ -165,14 +167,14 @@ pub struct Model {
     pub bone_parents: Vec<i64>,
     pub propagation_fronts: Vec<(Vec<usize>, Vec<i64>)>,
 
-    pub template_bone_heads: Tensor,        // [K, 3]
-    pub template_bone_tails: Tensor,        // [K, 3]
-    pub bone_heads_blendshapes: Tensor,     // [C, K, 3]
-    pub bone_tails_blendshapes: Tensor,     // [C, K, 3]
-    pub bone_rolls_rotmat: Tensor,          // [1, K, 3, 3]
+    pub template_bone_heads: Tensor,    // [K, 3]
+    pub template_bone_tails: Tensor,    // [K, 3]
+    pub bone_heads_blendshapes: Tensor, // [C, K, 3]
+    pub bone_tails_blendshapes: Tensor, // [C, K, 3]
+    pub bone_rolls_rotmat: Tensor,      // [1, K, 3, 3]
 
     // ── phenotype machinery ──
-    pub stacked_phenotype_blend_shapes_mask: Tensor,  // [C_macro, 26]
+    pub stacked_phenotype_blend_shapes_mask: Tensor, // [C_macro, 26]
     pub anchors: PhenotypeAnchors,
     pub local_change_labels: Vec<String>,
     pub extrapolate_phenotypes: bool,
@@ -183,8 +185,8 @@ pub struct Model {
     pub skinning_method: SkinningMethod,
 
     // ── constants ──
-    pub(crate) y_axis: Tensor,                    // [3]
-    pub(crate) degenerate_rotation: Tensor,       // [3, 3]
+    pub(crate) y_axis: Tensor,              // [3]
+    pub(crate) degenerate_rotation: Tensor, // [3, 3]
     pub dtype: DType,
     pub device: Device,
 }
@@ -208,10 +210,14 @@ pub struct ForwardOutput {
 
 impl Model {
     /// Convenience: number of bones.
-    pub fn bone_count(&self) -> usize { self.bone_labels.len() }
+    pub fn bone_count(&self) -> usize {
+        self.bone_labels.len()
+    }
 
     /// Convenience: number of vertices.
-    pub fn vertex_count(&self) -> usize { self.template_vertices.dim(0).unwrap_or(0) }
+    pub fn vertex_count(&self) -> usize {
+        self.template_vertices.dim(0).unwrap_or(0)
+    }
 
     pub fn build(opts: &ModelOptions) -> std::result::Result<Self, ModelError> {
         let dtype = opts.dtype;
@@ -258,8 +264,7 @@ impl Model {
         let weights_path = opts.data_root.join(opts.rig.weights_filename());
         let rig_data = rig::load_rig_json(&rig_path)?;
         let mut weights = rig::load_weights_json(&weights_path)?;
-        let hierarchy =
-            build_hierarchy(&rig_data, &mesh, &opts.bones_to_remove, &mut weights)?;
+        let hierarchy = build_hierarchy(&rig_data, &mesh, &opts.bones_to_remove, &mut weights)?;
         let vbm = build_vertex_bone_matrix(&weights, &hierarchy.labels, mesh.vertices.len());
 
         // ── Macrodetails + local changes. ────────────────────────────────
@@ -288,9 +293,10 @@ impl Model {
             )?;
 
         // ── Bone rolls → [1, K, 3, 3] rotation matrices via Y-axis Euler. ─
-        let rolls_tensor = Tensor::from_vec(hierarchy.rolls.clone(), hierarchy.rolls.len(), &device)?
-            .to_dtype(dtype)?
-            .unsqueeze(0)?; // [1, K]
+        let rolls_tensor =
+            Tensor::from_vec(hierarchy.rolls.clone(), hierarchy.rolls.len(), &device)?
+                .to_dtype(dtype)?
+                .unsqueeze(0)?; // [1, K]
         let bone_rolls_rotmat = euler_to_rotmat('y', &rolls_tensor, false)?; // [1, K, 3, 3]
 
         // ── Optional vertex pruning. Done after bone heads/tails so the rig
@@ -401,10 +407,16 @@ impl Model {
         let n_bones = self.bone_count();
 
         // Rest bone heads / tails / poses.
-        let rest_heads =
-            apply_linear_blendshape(&self.template_bone_heads, &self.bone_heads_blendshapes, &coeffs)?;
-        let rest_tails =
-            apply_linear_blendshape(&self.template_bone_tails, &self.bone_tails_blendshapes, &coeffs)?;
+        let rest_heads = apply_linear_blendshape(
+            &self.template_bone_heads,
+            &self.bone_heads_blendshapes,
+            &coeffs,
+        )?;
+        let rest_tails = apply_linear_blendshape(
+            &self.template_bone_tails,
+            &self.bone_tails_blendshapes,
+            &coeffs,
+        )?;
         let rest_bone_poses = kinematics::get_bone_poses(
             &rest_heads,
             &rest_tails,
@@ -444,11 +456,8 @@ impl Model {
         let base_transform = resolved.base_transform;
 
         // Skin.
-        let rest_vertices = apply_linear_blendshape(
-            &self.template_vertices,
-            &self.blendshapes,
-            &coeffs,
-        )?;
+        let rest_vertices =
+            apply_linear_blendshape(&self.template_vertices, &self.blendshapes, &coeffs)?;
         let weights = self.vertex_bone_weights.unsqueeze(0)?;
         let indices = self.vertex_bone_indices.unsqueeze(0)?;
         let vertices = match self.skinning_method {
@@ -485,13 +494,27 @@ impl Model {
     /// `cupsize`/`firmness` are omitted.
     pub fn phenotype_labels(&self) -> Vec<&'static str> {
         // Order: PHENOTYPE_LABELS = (every non-race feature) + race variations.
-        let non_race = ["gender", "age", "muscle", "weight", "height", "proportions", "cupsize", "firmness"];
+        let non_race = [
+            "gender",
+            "age",
+            "muscle",
+            "weight",
+            "height",
+            "proportions",
+            "cupsize",
+            "firmness",
+        ];
         let race = ["african", "asian", "caucasian"];
         let mut out: Vec<&'static str> = non_race.to_vec();
         out.extend(race.iter().copied());
         if !self.all_phenotypes {
             // EXCLUDED_PHENOTYPES = ['cupsize', 'firmness'] + race
-            out.retain(|n| !matches!(*n, "cupsize" | "firmness" | "african" | "asian" | "caucasian"));
+            out.retain(|n| {
+                !matches!(
+                    *n,
+                    "cupsize" | "firmness" | "african" | "asian" | "caucasian"
+                )
+            });
         }
         out
     }
@@ -517,7 +540,9 @@ impl Model {
                         .matmul(&rest_root)?
                         .matmul(&root_delta)?
                         .unsqueeze(1)?;
-                    let tail = out.delta_transforms.narrow(1, 1, out.delta_transforms.dim(1)? - 1)?;
+                    let tail =
+                        out.delta_transforms
+                            .narrow(1, 1, out.delta_transforms.dim(1)? - 1)?;
                     Tensor::cat(&[&new_root, &tail], 1)?.contiguous()
                 } else {
                     Ok(out.delta_transforms.clone())
@@ -526,7 +551,9 @@ impl Model {
             PoseParameterization::RootRelative => {
                 // Replace the root delta with the absolute root pose.
                 let abs_root = out.bone_poses.narrow(1, 0, 1)?;
-                let tail = out.delta_transforms.narrow(1, 1, out.delta_transforms.dim(1)? - 1)?;
+                let tail = out
+                    .delta_transforms
+                    .narrow(1, 1, out.delta_transforms.dim(1)? - 1)?;
                 Tensor::cat(&[&abs_root, &tail], 1)?.contiguous()
             }
             PoseParameterization::RootRelativeWorld => {
@@ -538,9 +565,11 @@ impl Model {
                 let (rest_linear, _) = rigid_from_homogeneous(&rest_root)?;
                 let rest_linear_inv = rest_linear.transpose(D::Minus1, D::Minus2)?.contiguous()?;
                 let new_linear = abs_linear.matmul(&rest_linear_inv)?;
-                let new_root = crate::rotation::rigid_to_homogeneous(&new_linear, &abs_t)?
-                    .unsqueeze(1)?;
-                let tail = out.delta_transforms.narrow(1, 1, out.delta_transforms.dim(1)? - 1)?;
+                let new_root =
+                    crate::rotation::rigid_to_homogeneous(&new_linear, &abs_t)?.unsqueeze(1)?;
+                let tail = out
+                    .delta_transforms
+                    .narrow(1, 1, out.delta_transforms.dim(1)? - 1)?;
                 Tensor::cat(&[&new_root, &tail], 1)?.contiguous()
             }
             PoseParameterization::Absolute => Ok(out.bone_poses.clone()),
@@ -594,12 +623,8 @@ impl Model {
                 let bone_transforms = delta_transforms.matmul(&rest_inv)?.contiguous()?;
                 let device = delta_transforms.device();
                 let dtype = delta_transforms.dtype();
-                let parent_bone_transforms = build_parent_transforms(
-                    &bone_transforms,
-                    &self.bone_parents,
-                    dtype,
-                    device,
-                )?;
+                let parent_bone_transforms =
+                    build_parent_transforms(&bone_transforms, &self.bone_parents, dtype, device)?;
                 let parent_inv = rigid_inverse_homogeneous(&parent_bone_transforms)?;
                 let recomputed_delta = rest_inv
                     .matmul(&parent_inv)?
@@ -650,9 +675,9 @@ fn collect_body_faces(
     eyes: bool,
     tongue: bool,
 ) -> std::result::Result<(Vec<Vec<u32>>, Vec<Vec<u32>>), ModelError> {
-    let body = groups.get("body").ok_or_else(|| {
-        ModelError::Config("base mesh has no 'body' group".into())
-    })?;
+    let body = groups
+        .get("body")
+        .ok_or_else(|| ModelError::Config("base mesh has no 'body' group".into()))?;
     let mut faces = body.face_vertex_indices.clone();
     let mut tex_indices = body.face_texture_coordinate_indices.clone();
     if eyes {
@@ -663,11 +688,10 @@ fn collect_body_faces(
             }
         }
     }
-    if tongue
-        && let Some(g) = groups.get("helper-tongue") {
-            faces.extend(g.face_vertex_indices.clone());
-            tex_indices.extend(g.face_texture_coordinate_indices.clone());
-        }
+    if tongue && let Some(g) = groups.get("helper-tongue") {
+        faces.extend(g.face_vertex_indices.clone());
+        tex_indices.extend(g.face_texture_coordinate_indices.clone());
+    }
     Ok((faces, tex_indices))
 }
 
@@ -828,9 +852,18 @@ fn prune_unattached_vertices(
         old_to_new[old as usize] = new_i as i64;
     }
 
-    let new_template: Vec<[f64; 3]> = kept.iter().map(|&i| template_vertices[i as usize]).collect();
-    let new_indices: Vec<Vec<u32>> = kept.iter().map(|&i| vbm.indices[i as usize].clone()).collect();
-    let new_weights: Vec<Vec<f64>> = kept.iter().map(|&i| vbm.weights[i as usize].clone()).collect();
+    let new_template: Vec<[f64; 3]> = kept
+        .iter()
+        .map(|&i| template_vertices[i as usize])
+        .collect();
+    let new_indices: Vec<Vec<u32>> = kept
+        .iter()
+        .map(|&i| vbm.indices[i as usize].clone())
+        .collect();
+    let new_weights: Vec<Vec<f64>> = kept
+        .iter()
+        .map(|&i| vbm.weights[i as usize].clone())
+        .collect();
     let new_vbm = crate::models::rig::VertexBoneMatrix {
         indices: new_indices,
         weights: new_weights,
@@ -1025,9 +1058,11 @@ mod tests {
         let bad = v.iter().filter(|x| !x.is_finite()).count();
         assert_eq!(bad, 0, "{bad} non-finite vertex coords");
         // Reasonable human-sized bounds (metres).
-        let (min_v, max_v) = v.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &x| {
-            (lo.min(x), hi.max(x))
-        });
+        let (min_v, max_v) = v
+            .iter()
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &x| {
+                (lo.min(x), hi.max(x))
+            });
         assert!(
             min_v > -3.0 && max_v < 3.0,
             "vertices out of plausible human range: [{min_v}, {max_v}]"
@@ -1043,13 +1078,18 @@ mod tests {
         for i in 0..n_verts {
             let x = v[i * stride];
             let z = v[i * stride + 2];
-            x_min = x_min.min(x); x_max = x_max.max(x);
-            z_min = z_min.min(z); z_max = z_max.max(z);
+            x_min = x_min.min(x);
+            x_max = x_max.max(x);
+            z_min = z_min.min(z);
+            z_max = z_max.max(z);
         }
         let height = z_max - z_min;
         let width = x_max - x_min;
         assert!(height > 1.0, "height {height} unexpectedly small");
-        assert!(height > width, "height {height} should exceed width {width}");
+        assert!(
+            height > width,
+            "height {height} should exceed width {width}"
+        );
     }
 
     #[test]

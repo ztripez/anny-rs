@@ -1,0 +1,4 @@
+hand_R_bones 20
+hand_R_faces 1598
+head_bones 63
+head_faces 4507

@@ -1,0 +1,2 @@
+vertices 13348
+faces 13346

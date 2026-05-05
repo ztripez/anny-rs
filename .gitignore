@@ -1,0 +1,6 @@
+/target
+
+# Python-exported golden fixtures — regenerate via
+# tests/fixtures/export_golden.py before running ignored tests.
+tests/fixtures/*.bin
+tests/fixtures/*.shape

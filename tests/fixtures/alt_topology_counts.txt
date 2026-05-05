@@ -1,0 +1,3 @@
+name notoes_collapse3pc
+vertices 369
+faces 734

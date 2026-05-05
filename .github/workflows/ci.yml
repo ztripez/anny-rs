@@ -70,10 +70,13 @@ jobs:
         working-directory: anny-rs
         run: cargo test --features smplx-download --verbose
 
+      # `cuda` is intentionally excluded — cudarc's build script requires
+      # the CUDA toolkit, which isn't available on the free GitHub runners.
+      # `smplx-download` covers all the feature-gated paths we ship.
       - name: cargo clippy
         if: matrix.kind == 'clippy'
         working-directory: anny-rs
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets --features smplx-download -- -D warnings
 
       - name: cargo doc
         if: matrix.kind == 'doc'

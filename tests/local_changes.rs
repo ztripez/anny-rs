@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use anny_rs::models::full_model::{Model, ModelOptions, PoseParameterization};
+use anny_rs::models::full_model::{Model, ModelOptions, PoseParameterization, Topology};
 use anny_rs::phenotype::PhenotypeValues;
 use candle_core::Tensor;
 
@@ -194,6 +194,51 @@ fn smooth_normals_on_full_body_are_unit_length() {
     assert!(
         zero_count < n_verts / 2,
         "too many unreferenced vertices: {zero_count} of {n_verts}"
+    );
+}
+
+#[test]
+#[ignore = "release-only — full model build"]
+fn genital_morphs_are_gated_by_opt_in_flag() {
+    // Default build: parity with Python's create_fullbody_model() — no
+    // entries from the `genitals/` category should be exposed.
+    let default_model = build();
+    let default_genital: Vec<&String> = default_model
+        .local_change_labels
+        .iter()
+        .filter(|s| s.starts_with("penis-"))
+        .collect();
+    assert!(
+        default_genital.is_empty(),
+        "default build leaked genital morphs: {default_genital:?}"
+    );
+
+    // Opt-in build with Makehuman topology: the 6 baseline genital morphs
+    // shipped under data/mpfb2/targets/genitals/ should now be drivable.
+    let mut opts = ModelOptions::new(data_root());
+    opts.all_phenotypes = true;
+    opts.topology = Topology::Makehuman;
+    opts.include_genital_morphs = true;
+    let opt_in = Model::build(&opts).expect("opt-in model build");
+
+    let expected = [
+        "penis-circ-incr",
+        "penis-length-incr",
+        "penis-testicles-incr",
+    ];
+    for label in expected {
+        assert!(
+            opt_in.local_change_labels.iter().any(|l| l == label),
+            "expected '{label}' in local_change_labels with include_genital_morphs=true; \
+             got {:?}",
+            opt_in.local_change_labels
+        );
+    }
+
+    // Counts: opt-in adds exactly the genital pairs on top of the default set.
+    assert!(
+        opt_in.local_change_labels.len() > default_model.local_change_labels.len(),
+        "opt-in build did not add any extra labels"
     );
 }
 

@@ -80,6 +80,7 @@ pub fn load_all(
     data_root: &Path,
     template_vertices_world: &[[f64; 3]],
     world_transform: &WorldTransform3x3,
+    include_genital_morphs: bool,
     dtype: DType,
     device: &Device,
 ) -> std::result::Result<StackedBlendShapes, MacrodetailsError> {
@@ -240,7 +241,13 @@ pub fn load_all(
     let n_macrodetails = blend_buf.len();
 
     // ── local changes ────────────────────────────────────────────────────
-    let local_change_labels = load_local_changes(data_root, v, world_transform, &mut blend_buf)?;
+    let local_change_labels = load_local_changes(
+        data_root,
+        v,
+        world_transform,
+        include_genital_morphs,
+        &mut blend_buf,
+    )?;
 
     // Stack into final tensors.
     let mut blend_flat: Vec<f64> = Vec::with_capacity(blend_buf.len() * v * 3);
@@ -340,10 +347,15 @@ struct TargetMetadata {
 /// each category with `negative-<side>` and `positive-<side>` slots, loads
 /// both `.target.gz` files and appends `(positive, negative)` to `blend_buf`.
 /// Returns the list of positive-pole labels in the same pair order.
+///
+/// The `genitals` category is gated behind `include_genital_morphs` to mirror
+/// Python's `create_fullbody_model()` default; when `false`, the entire
+/// category is skipped (parity with the historical hardcoded skip).
 fn load_local_changes(
     data_root: &Path,
     vertex_count: usize,
     world_transform: &WorldTransform3x3,
+    include_genital_morphs: bool,
     blend_buf: &mut Vec<Vec<f64>>,
 ) -> std::result::Result<Vec<String>, MacrodetailsError> {
     let json_path = data_root.join("mpfb2/targets/target.json");
@@ -358,7 +370,7 @@ fn load_local_changes(
     // forward pass doesn't depend on order beyond consistent indexing.)
     keys.sort();
     for key in keys {
-        if key == "genitals" {
+        if key == "genitals" && !include_genital_morphs {
             continue;
         }
         let category_list = &meta[key].categories;
@@ -448,6 +460,7 @@ mod tests {
             &data_root(),
             &template_vertices,
             &default_world_transform(),
+            false,
             DType::F64,
             &device,
         )

@@ -70,6 +70,12 @@ pub enum Rig {
 /// `Makehuman` keeps the raw MakeHuman topology unchanged. Mirrors the
 /// `topology="default" | "makehuman"` argument in
 /// `anny/src/anny/models/full_model.py:create_model`.
+///
+/// Note: under `Topology::Default` the genital geometry is replaced with
+/// stitched cap quads, so any morph targets under `targets/genitals/` would
+/// be no-ops on the rendered mesh. Pair
+/// [`ModelOptions::include_genital_morphs`] with [`Topology::Makehuman`] if
+/// you actually want those morphs to drive vertices.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Topology {
     Default,
@@ -119,6 +125,14 @@ pub struct ModelOptions {
     pub skinning_method: SkinningMethod,
     pub extrapolate_phenotypes: bool,
     pub all_phenotypes: bool,
+    /// When `true`, include the `genitals` category from
+    /// `targets/target.json` in `local_change_labels`. Defaults to `false`
+    /// for parity with Python's `create_fullbody_model()`, which excludes
+    /// genitals from `local_changes="all"`. Pair with
+    /// [`Topology::Makehuman`] to keep the genital geometry the morphs
+    /// target — under [`Topology::Default`] the cap-quad replacement makes
+    /// these morphs no-ops on the rendered mesh.
+    pub include_genital_morphs: bool,
     pub dtype: DType,
     pub device: Device,
 }
@@ -138,6 +152,7 @@ impl ModelOptions {
             skinning_method: SkinningMethod::Lbs,
             extrapolate_phenotypes: false,
             all_phenotypes: false,
+            include_genital_morphs: false,
             dtype: DType::F64,
             device: Device::Cpu,
         }
@@ -272,6 +287,7 @@ impl Model {
             &opts.data_root,
             &template_vertices_world,
             &world_transform,
+            opts.include_genital_morphs,
             dtype,
             &device,
         )?;
